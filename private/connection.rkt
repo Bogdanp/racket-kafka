@@ -47,8 +47,9 @@
       in
       (lambda (_)
         (define size (proto:Size in))
+        (define data (read-bytes size in))
         (define-values (id response)
-          (call-with-input-bytes (read-bytes size in)
+          (call-with-input-bytes data
             (lambda (resp-in)
               (values
                (proto:ResponseHeader resp-in)

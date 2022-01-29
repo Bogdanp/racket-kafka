@@ -64,7 +64,7 @@
        (ref 'ControllerID_1 res)
        (for/list ([topic (in-list (ref 'TopicMetadata_1 'TopicMetadatas_1 res))])
          (topic-metadata
-          (ref 'ErrorCode_1 topic)
-          (kunstring (ref 'Topic_1 topic))
+          (ref 'TopicErrorCode_1 topic)
+          (kunstring (ref 'TopicName_1 topic))
           (= (ref 'IsInternal_1 topic) 1)
           null)))))))
