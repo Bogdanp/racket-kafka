@@ -1,0 +1,85 @@
+#lang binfmt
+
+## Request
+
+Request       = Size RequestHeader RequestData;
+RequestHeader = APIKey APIVersion CorrelationID ClientID;
+APIKey        = i16be;
+APIVersion    = i16be;
+CorrelationID = i32be;
+ClientID      = String;
+RequestData   = MetadataRequest
+              | SaslHandshakeRequest;
+
+
+## Response
+
+Response       = Size ResponseHeader ResponseData;
+ResponseHeader = CorrelationID;
+ResponseData   = MetadataResponse
+               | ListGroupsResponse
+               | SaslHandshakeResponse
+               | APIVersionsResponse;
+
+
+## Metadata (code 3, version 1)
+
+MetadataRequest = TopicNames;
+TopicNames      = ArrayLen TopicName{ArrayLen_1};
+TopicName       = String;
+
+MetadataResponse   = Brokers ControllerID TopicMetadatas;
+Brokers            = ArrayLen Broker{ArrayLen_1};
+Broker             = NodeID Host Port Rack;
+NodeID             = i32be;
+Host               = String;
+Port               = i32be;
+Rack               = String;
+ControllerID       = i32be;
+TopicMetadatas     = ArrayLen TopicMetadata{ArrayLen_1};
+TopicMetadata      = TopicErrorCode Topic IsInternal PartitionMetadatas;
+TopicErrorCode     = i16be;
+IsInternal         = i8;
+PartitionMetadatas = ArrayLen PartitionMetadata{ArrayLen_1};
+PartitionMetadata  = PartitionErrorCode PartitionID Leader ArrayLen Replica{ArrayLen_1} ArrayLen ISR{ArrayLen_2};
+PartitionErrorCode = i16be;
+PartitionID        = i32be;
+Leader             = i32be;
+Replica            = i32be;
+ISR                = i32be;
+
+
+## SaslHandshake (code 17, version 0)
+
+SaslHandshakeRequest   = SaslHandshakeMechanism;
+SaslHandshakeMechanism = String;
+
+SaslHandshakeResponse          = ErrorCode SaslHandshakeEnabledMechanisms;
+SaslHandshakeEnabledMechanisms = ArrayLen SaslHandshakeMechanism{ArrayLen_1};
+
+
+## APIVersions (code 18, version 0)
+
+APIVersionsResponse = ErrorCode ArrayLen APIVersionRange{ArrayLen_1};
+APIVersionRange     = APIKey MinVersion MaxVersion;
+MinVersion          = i16be;
+MaxVersion          = i16be;
+
+
+## Common
+
+Size         = i32be;
+
+ErrorCode    = i16be;
+
+Bytes        = NullBytes | BytesLength BytesData{BytesLength_1};
+NullBytes    = 0xFF 0xFF 0xFF 0xFF;
+BytesLength  = i32be;
+BytesData    = u8;
+
+String       = NullString | StringLength StringData{StringLength_1};
+NullString   = 0xFF 0xFF;
+StringLength = i16be;
+StringData   = u8;
+
+ArrayLen     = i32be;
