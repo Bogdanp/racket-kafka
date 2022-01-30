@@ -3,11 +3,18 @@
 (require racket/port)
 
 (provide
+ null8
+ null16
+ null32
  ref
  kstring
  kunbytes
  kunstring
  with-output-bytes)
+
+(define null8  #"\xFF")
+(define null16 #"\xFF\xFF")
+(define null32 #"\xFF\xFF\xFF\xFF")
 
 (define ref
   (case-lambda

@@ -22,13 +22,13 @@ ResponseData   = MetadataResponse
                | APIVersionsResponse;
 
 
-## Metadata (code 3, version 1)
+## Metadata (code 3)
 
-MetadataRequest = TopicNames;
-TopicNames      = ArrayLen TopicName{ArrayLen_1};
-TopicName       = String;
+MetadataRequestV1 = TopicNames;
+TopicNames        = ArrayLen TopicName{ArrayLen_1};
+TopicName         = String;
 
-MetadataResponse   = Brokers ControllerID TopicMetadatas;
+MetadataResponseV1 = Brokers ControllerID TopicMetadatas;
 Brokers            = ArrayLen Broker{ArrayLen_1};
 Broker             = NodeID Host Port Rack;
 NodeID             = i32be;
@@ -60,10 +60,10 @@ SaslHandshakeEnabledMechanisms = ArrayLen SaslHandshakeMechanism{ArrayLen_1};
 
 ## APIVersions (code 18, version 0)
 
-APIVersionsResponse = ErrorCode ArrayLen APIVersionRange{ArrayLen_1};
-APIVersionRange     = APIKey MinVersion MaxVersion;
-MinVersion          = i16be;
-MaxVersion          = i16be;
+APIVersionsResponseV0 = ErrorCode ArrayLen APIVersionRange{ArrayLen_1};
+APIVersionRange       = APIKey MinVersion MaxVersion;
+MinVersion            = i16be;
+MaxVersion            = i16be;
 
 
 ## Common
@@ -83,3 +83,4 @@ StringLength = i16be;
 StringData   = u8;
 
 ArrayLen     = i32be;
+NullArray    = 0xFF 0xFF 0xFF 0xFF;
