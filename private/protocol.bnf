@@ -150,3 +150,5 @@ ErrorMessage = CompactString;
 
 ArrayLen     = i32be;
 NullArray    = 0xFF 0xFF 0xFF 0xFF;
+
+CompactString = TODO;
