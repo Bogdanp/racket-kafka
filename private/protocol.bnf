@@ -64,10 +64,10 @@ HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
 
 ## SaslHandshake (code 17)
 
-SaslHandshakeRequest   = SaslHandshakeMechanism;
+SaslHandshakeRequestV0 = SaslHandshakeMechanism;
 SaslHandshakeMechanism = String;
 
-SaslHandshakeResponse          = ErrorCode SaslHandshakeEnabledMechanisms;
+SaslHandshakeResponseV0        = ErrorCode SaslHandshakeEnabledMechanisms;
 SaslHandshakeEnabledMechanisms = ArrayLen SaslHandshakeMechanism{ArrayLen_1};
 
 
@@ -136,10 +136,9 @@ DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
 ## Common
 
 @foreign-parsers "protocol-native.rkt"
-  {Bytes un-Bytes}
+  {UUID   un-UUID}
+  {Bytes  un-Bytes}
   {String un-String};
-
-UUID = u8{16};
 
 Tags = TODO;
 
