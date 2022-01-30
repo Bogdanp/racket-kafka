@@ -8,9 +8,6 @@
  null32
  ref
  opt
- kstring
- kunbytes
- kunstring
  with-output-bytes)
 
 (define null8  #"\xFF")
@@ -34,20 +31,6 @@
      (and p (cdr p))]
     [(id . args)
      (opt id (apply ref args))]))
-
-(define (kstring s)
-  (define bs (string->bytes/utf-8 s))
-  `((StringLength_1 . ,(bytes-length bs))
-    (StringData_1 . ,(bytes->list bs))))
-
-(define (kunbytes d)
-  (if (and (assq 'num_1 d)
-           (assq 'num_2 d))
-      #""
-      (apply bytes (ref 'StringData_1 d))))
-
-(define (kunstring d)
-  (bytes->string/utf-8 (kunbytes d)))
 
 (define-syntax-rule (with-output-bytes e0 e ...)
   (with-output-to-bytes

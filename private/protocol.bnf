@@ -1,8 +1,7 @@
 #lang binfmt
 
-## Request
+## RequestHeader
 
-Request       = Size RequestHeader RequestData;
 RequestHeader = APIKey APIVersion CorrelationID ClientID;
 APIKey        = i16be;
 APIVersion    = i16be;
@@ -10,16 +9,6 @@ CorrelationID = i32be;
 ClientID      = String;
 RequestData   = MetadataRequest
               | SaslHandshakeRequest;
-
-
-## Response
-
-Response       = Size ResponseHeader ResponseData;
-ResponseHeader = CorrelationID;
-ResponseData   = MetadataResponse
-               | ListGroupsResponse
-               | SaslHandshakeResponse
-               | APIVersionsResponse;
 
 
 ## Metadata (code 3)
@@ -107,7 +96,7 @@ BrokerID               = i32be;
 Configs                = ArrayLen Config{ArrayLen_1};
 Config                 = ConfigName ConfigValue;
 ConfigName             = String;
-ConfigValue            = NulalbleString;
+ConfigValue            = String;
 TimeoutMs              = i32be;
 
 CreateTopicsResponseV0       = CreateTopicsResponseTopicsV0;
@@ -148,6 +137,11 @@ DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
 
 ## Common
 
+@foreign-parsers "protocol-native.rkt" Bytes String;
+@foreign-unparsers "protocol-native.rkt"
+  {un-Bytes Bytes}
+  {un-String String};
+
 UUID = u8{16};
 
 Tags = TODO;
@@ -156,18 +150,6 @@ Size         = i32be;
 
 ErrorCode    = i16be;
 ErrorMessage = CompactString;
-
-Bytes         = BytesLength BytesData{BytesLength_1};
-NullableBytes = NullBytes | Bytes;
-NullBytes     = 0xFF 0xFF 0xFF 0xFF;
-BytesLength   = i32be;
-BytesData     = u8;
-
-String         = StringLength StringData{StringLength_1};
-NullableString = NullString | String;
-NullString     = 0xFF 0xFF;
-StringLength   = i16be;
-StringData     = u8;
 
 ArrayLen     = i32be;
 NullArray    = 0xFF 0xFF 0xFF 0xFF;

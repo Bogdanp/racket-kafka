@@ -55,7 +55,7 @@
 
 (define ((make-manager in out ch))
   (define client-id
-    (kstring (current-client-id)))
+    (current-client-id))
   (let loop ([connected? #t]
              [seq 0]
              [reqs (hasheqv)])
@@ -76,7 +76,7 @@
           (define size-in (read-port 4 in))
           (define size (proto:Size size-in))
           (define resp-in (read-port size in))
-          (define resp-id (proto:ResponseHeader resp-in))
+          (define resp-id (proto:CorrelationID resp-in))
           (define the-req (hash-ref reqs resp-id #f))
           (cond
             [the-req
@@ -133,8 +133,8 @@
 (define (make-request-evt conn
                           #:key key
                           #:version v
-                          #:data [data #""]
-                          #:parser [parser proto:ResponseData])
+                          #:parser parser
+                          #:data data)
   (define ch (make-channel))
   (handle-evt
    (nack-guard-evt
@@ -166,7 +166,8 @@
      conn
      #:key 18
      #:version 0
-     #:parser proto:APIVersionsResponseV0)
+     #:parser proto:APIVersionsResponseV0
+     #:data #"")
     (lambda (res)
       (define err-code (ref 'ErrorCode_1 res))
       (unless (zero? err-code)

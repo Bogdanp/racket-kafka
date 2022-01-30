@@ -27,7 +27,7 @@
       (for/list ([t (in-list topics)])
         (define assignments (CreateTopic-assignments t))
         (define configs (CreateTopic-configs t))
-        `((TopicName_1         . ,(kstring (CreateTopic-name t)))
+        `((TopicName_1         . ,(CreateTopic-name t))
           (NumPartitions_1     . ,(CreateTopic-partitions t))
           (ReplicationFactor_1 . ,(CreateTopic-replication-factor t))
           (Assignments_1
@@ -39,8 +39,8 @@
           (Configs_1
            . ((ArrayLen_1 . ,(hash-count configs))
               (Config_1   . ,(for/list ([(name value) (in-hash configs)])
-                               `((ConfigName_1  . ,(kstring name))
-                                 (ConfigValue_1 . ,(kstring value))))))))))
+                               `((ConfigName_1  . ,name)
+                                 (ConfigValue_1 . ,value)))))))))
 
     (with-output-bytes
       (proto:un-CreateTopicsRequestV0
@@ -51,5 +51,5 @@
     (CreatedTopics
      (for/list ([t (in-list (ref 'CreateTopicsResponseTopicV0_1 res))])
        (CreatedTopic
-        (kunstring (ref 'TopicName_1 t))
+        (ref 'TopicName_1 t)
         (ref 'ErrorCode_1 t))))))

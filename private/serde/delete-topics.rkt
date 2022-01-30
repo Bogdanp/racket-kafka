@@ -24,12 +24,12 @@
     (with-output-bytes
       (proto:un-DeleteTopicsRequestV0
        `((TopicNames_1 . ((ArrayLen_1  . ,(length topics))
-                          (TopicName_1 . ,(map kstring topics))))
+                          (TopicName_1 . ,topics)))
          (TimeoutMs_1 . ,timeout-ms)))))
   (lambda (res)
     (define topics
       (for/list ([topic (in-list (ref 'DeleteTopicsResponseDataV0_1 res))])
         (define err-code (ref 'ErrorCode_1 topic))
-        (define name (kunstring (ref 'TopicName_1 topic)))
+        (define name (ref 'TopicName_1 topic))
         (DeletedTopic err-code #f name #f (hasheqv))))
     (DeletedTopics #f topics (hasheqv))))
