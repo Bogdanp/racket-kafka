@@ -50,9 +50,13 @@
 (define (get-topic-metadata conn . topics)
   (sync
    (handle-evt
-    (make-request-evt conn 3 1
-                      `((ArrayLen_1 . ,(length topics))
-                        (TopicName . ,(map kstring topics))))
+    (make-request-evt
+     conn
+     #:key 3
+     #:version 1
+     #:data `((ArrayLen_1 . ,(length topics))
+              (TopicName . ,(map kstring topics)))
+     #:parser proto:MetadataResponse)
     (lambda (res)
       (metadata
        (for/list ([broker (in-list (ref 'Broker_1 'Brokers_1 res))])

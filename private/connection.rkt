@@ -1,10 +1,22 @@
 #lang racket/base
 
 (require racket/match
-         racket/port
          racket/tcp
          "help.rkt"
          (prefix-in proto: "protocol.bnf"))
+
+;; exn ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(provide
+ exn:fail:kafka?)
+
+(struct exn:fail:kafka exn:fail ())
+
+(define (kafka-err message . args)
+  (exn:fail:kafka (apply format message args) (current-continuation-marks)))
+
+
+;; connection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
  current-client-id
@@ -19,7 +31,7 @@
 (struct connection (ch mgr)
   #:transparent)
 
-(define (connect host port)
+(define (connect [host "127.0.0.1"] [port 9092])
   (define-values (in out)
     (tcp-connect host port))
   (define ch (make-channel))
@@ -35,28 +47,52 @@
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct req (res nack ch) #:transparent)
+(define-logger kafka)
+
+(struct req (parser res nack ch) #:transparent)
+
+(define (set-req-response r response)
+  (struct-copy req r [res response]))
+
+(define (read-port amount in)
+  (define bs (read-bytes amount in))
+  (when (eof-object? bs)
+    (raise (exn:fail:network "unexpected EOF~n  the other end closed the connection prematurely"
+                             (current-continuation-marks))))
+  (open-input-bytes bs))
 
 (define ((make-manager in out ch))
   (define client-id
     (kstring (current-client-id)))
-  (let loop ([seq 0] [reqs (hasheqv)])
+  (let loop ([connected? #t]
+             [seq 0]
+             [reqs (hasheqv)])
     (apply
      sync
      (handle-evt
-      in
+      (if connected? in never-evt)
       (lambda (_)
-        (define size (proto:Size in))
-        (define data (read-bytes size in))
-        (define-values (id response)
-          (call-with-input-bytes data
-            (lambda (resp-in)
-              (values
-               (proto:ResponseHeader resp-in)
-               (proto:ResponseData resp-in)))))
-        (loop seq (if (hash-has-key? reqs id)
-                      (hash-update reqs id (λ (r) (struct-copy req r [res response])))
-                      reqs))))
+        (with-handlers ([exn:fail:network?
+                         (lambda (e)
+                           (log-kafka-error "connection failed: ~a" (exn-message e))
+                           (loop #f seq reqs))]
+                        [exn:fail?
+                         (lambda (e)
+                           (println e)
+                           (log-kafka-error "failed to process response: ~a" (exn-message e))
+                           (loop connected? seq reqs))])
+          (define size-in (read-port 4 in))
+          (define size (proto:Size size-in))
+          (define resp-in (read-port size in))
+          (define resp-id (proto:ResponseHeader resp-in))
+          (define the-req (hash-ref reqs resp-id #f))
+          (cond
+            [the-req
+             (define response ((req-parser the-req) resp-in))
+             (loop connected? seq (hash-set reqs resp-id (set-req-response the-req response)))]
+            [else
+             (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id)
+             (loop connected? seq reqs)]))))
      (handle-evt
       ch
       (lambda (msg)
@@ -64,49 +100,64 @@
           [`(disconnect)
            (close-output-port out)
            (close-input-port in)]
-          [`(request ,k ,v ,data ,nack ,ch)
+          [`(request ,k ,v ,data ,parser ,nack ,ch)
            (define id seq)
-           (define header-data
-             (with-output-bytes
-               (proto:un-RequestHeader
-                `((APIKey_1 . ,k)
-                  (APIVersion_1 . ,v)
-                  (CorrelationID_1 . ,id)
-                  (ClientID_1 . ,client-id)))))
-           (define request-data
-             (if data
-                 (with-output-bytes
-                   (proto:un-RequestData data))
-                 #""))
-           (define size-data
-             (with-output-bytes
-               (proto:un-Size (+ (bytes-length header-data)
-                                 (bytes-length request-data)))))
-           (write-bytes size-data out)
-           (write-bytes header-data out)
-           (write-bytes request-data out)
-           (flush-output out)
-           (define the-req
-             (req #f nack ch))
-           (loop (add1 seq) (hash-set reqs id the-req))])))
+           (cond
+             [connected?
+              (define header-data
+                (with-output-bytes
+                  (proto:un-RequestHeader
+                   `((APIKey_1 . ,k)
+                     (APIVersion_1 . ,v)
+                     (CorrelationID_1 . ,id)
+                     (ClientID_1 . ,client-id)))))
+              (define request-data
+                (if data
+                    (with-output-bytes
+                      (proto:un-RequestData data))
+                    #""))
+              (define size-data
+                (with-output-bytes
+                  (proto:un-Size (+ (bytes-length header-data)
+                                    (bytes-length request-data)))))
+              (write-bytes size-data out)
+              (write-bytes header-data out)
+              (write-bytes request-data out)
+              (flush-output out)
+              (define the-req
+                (req parser #f nack ch))
+              (loop connected? (add1 seq) (hash-set reqs id the-req))]
+             [else
+              (define the-req
+                (req parser (kafka-err "not connected") nack ch))
+              (loop connected? (add1 seq) (hash-set reqs id the-req))])])))
      (append
       (for/list ([(id r) (in-hash reqs)] #:when (req-res r))
         (handle-evt
          (channel-put-evt (req-ch r) (req-res r))
          (lambda (_)
-           (loop seq (hash-remove reqs id)))))
+           (loop connected? seq (hash-remove reqs id)))))
       (for/list ([(id r) (in-hash reqs)])
         (handle-evt
          (req-nack r)
          (lambda (_)
-           (loop seq (hash-remove reqs id)))))))))
+           (loop connected? seq (hash-remove reqs id)))))))))
 
-(define (make-request-evt conn k v data)
+(define (make-request-evt conn
+                          #:key k
+                          #:version v
+                          #:data [data #f]
+                          #:parser [parser proto:ResponseData])
   (define ch (make-channel))
-  (nack-guard-evt
-   (lambda (nack)
-     (thread-resume (connection-mgr conn))
-     (begin0 ch
-       (channel-put
-        (connection-ch conn)
-        `(request ,k ,v ,data ,nack ,ch))))))
+  (handle-evt
+   (nack-guard-evt
+    (lambda (nack)
+      (thread-resume (connection-mgr conn))
+      (begin0 ch
+        (channel-put
+         (connection-ch conn)
+         `(request ,k ,v ,data ,parser ,nack ,ch)))))
+   (lambda (res-or-exn)
+     (begin0 res-or-exn
+       (when (exn:fail? res-or-exn)
+         (raise res-or-exn))))))
