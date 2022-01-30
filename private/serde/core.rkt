@@ -6,6 +6,7 @@
                      syntax/parse)
          racket/contract
          "../connection.rkt"
+         "../error.rkt"
          "../help.rkt"
          (prefix-in proto: "../protocol.bnf")
          "contract.rkt")
@@ -96,8 +97,7 @@
             (lambda (res)
               (define err-code (or (opt 'ErrorCode_1 res) 0))
               (unless (zero? err-code)
-                ;; FIXME: convert codes to messages
-                (raise (kafka-err err-code "request failed")))
+                (raise-kafka-error err-code))
               (proc res))))
          (define (make-evt-id conn arg ...)
            (case (find-best-version conn key version-rng-id)

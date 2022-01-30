@@ -1,22 +1,10 @@
 #lang racket/base
 
-(require (for-syntax racket/base
-                     syntax/parse)
-         racket/match
+(require racket/match
          racket/tcp
+         "error.rkt"
          "help.rkt"
          (prefix-in proto: "protocol.bnf"))
-
-;; exn ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(provide
- exn:fail:kafka?
- kafka-err)
-
-(struct exn:fail:kafka exn:fail (code))
-
-(define (kafka-err code message . args)
-  (exn:fail:kafka (apply format message args) (current-continuation-marks) code))
 
 
 ;; connection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -128,7 +116,7 @@
               (loop connected? (add1 seq) (hash-set reqs id the-req))]
              [else
               (define the-req
-                (req parser (kafka-err -1 "not connected") nack ch))
+                (req parser (kafka-error -1 "not connected") nack ch))
               (loop connected? (add1 seq) (hash-set reqs id the-req))])])))
      (append
       (for/list ([(id r) (in-hash reqs)] #:when (req-res r))
@@ -182,7 +170,7 @@
     (lambda (res)
       (define err-code (ref 'ErrorCode_1 res))
       (unless (zero? err-code)
-        (raise (kafka-err err-code "api versions request failed")))
+        (raise-kafka-error err-code))
       (for/hasheqv ([rng (in-list (ref 'APIVersionRange_1 res))])
         (values
          (ref 'APIKey_1 rng)
