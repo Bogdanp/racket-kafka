@@ -92,10 +92,32 @@ MinVersion            = i16be;
 MaxVersion            = i16be;
 
 
+## CreateTopics (code 19)
+
+CreateTopicsRequestV0  = CreateTopicsRequestsV0 TimeoutMs;
+CreateTopicsRequestsV0 = ArrayLen CreateTopicRequestV0{ArrayLen_1};
+CreateTopicRequestV0   = TopicName NumPartitions ReplicationFactor Assignments Configs;
+NumPartitions          = i32be;
+ReplicationFactor      = i16be;
+Assignments            = ArrayLen Assignment{ArrayLen_1};
+Assignment             = PartitionIndex BrokerIDs;
+PartitionIndex         = i32be;
+BrokerIDs              = ArrayLen BrokerID{ArrayLen_1};
+BrokerID               = i32be;
+Configs                = ArrayLen Config{ArrayLen_1};
+Config                 = ConfigName ConfigValue;
+ConfigName             = String;
+ConfigValue            = NulalbleString;
+TimeoutMs              = i32be;
+
+CreateTopicsResponseV0       = CreateTopicsResponseTopicsV0;
+CreateTopicsResponseTopicsV0 = ArrayLen CreateTopicsResponseTopicV0{ArrayLen_1};
+CreateTopicsResponseTopicV0  = TopicName ErrorCode;
+
+
 ## DeleteTopics (code 20)
 
 DeleteTopicsRequestV0 = TopicNames TimeoutMs;
-TimeoutMs             = i32be;
 DeleteTopicsRequestV1 = DeleteTopicsRequestV0;
 DeleteTopicsRequestV2 = DeleteTopicsRequestV0;
 DeleteTopicsRequestV3 = DeleteTopicsRequestV0;
@@ -135,15 +157,17 @@ Size         = i32be;
 ErrorCode    = i16be;
 ErrorMessage = CompactString;
 
-Bytes        = NullBytes | BytesLength BytesData{BytesLength_1};
-NullBytes    = 0xFF 0xFF 0xFF 0xFF;
-BytesLength  = i32be;
-BytesData    = u8;
+Bytes         = BytesLength BytesData{BytesLength_1};
+NullableBytes = NullBytes | Bytes;
+NullBytes     = 0xFF 0xFF 0xFF 0xFF;
+BytesLength   = i32be;
+BytesData     = u8;
 
-String       = NullString | StringLength StringData{StringLength_1};
-NullString   = 0xFF 0xFF;
-StringLength = i16be;
-StringData   = u8;
+String         = StringLength StringData{StringLength_1};
+NullableString = NullString | String;
+NullString     = 0xFF 0xFF;
+StringLength   = i16be;
+StringData     = u8;
 
 ArrayLen     = i32be;
 NullArray    = 0xFF 0xFF 0xFF 0xFF;
