@@ -7,8 +7,6 @@ APIKey        = i16be;
 APIVersion    = i16be;
 CorrelationID = i32be;
 ClientID      = String;
-RequestData   = MetadataRequest
-              | SaslHandshakeRequest;
 
 
 ## Metadata (code 3)
@@ -137,10 +135,9 @@ DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
 
 ## Common
 
-@foreign-parsers "protocol-native.rkt" Bytes String;
-@foreign-unparsers "protocol-native.rkt"
-  {un-Bytes Bytes}
-  {un-String String};
+@foreign-parsers "protocol-native.rkt"
+  {Bytes un-Bytes}
+  {String un-String};
 
 UUID = u8{16};
 
