@@ -10,7 +10,8 @@
 ;; exn ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
- exn:fail:kafka?)
+ exn:fail:kafka?
+ kafka-err)
 
 (struct exn:fail:kafka exn:fail (code))
 
@@ -175,7 +176,7 @@
    (handle-evt
     (make-request-evt
      conn
-     #:key (request-key 'ApiVersions)
+     #:key 18
      #:version 0
      #:parser proto:APIVersionsResponseV0)
     (lambda (res)
@@ -189,9 +190,9 @@
           (ref 'MinVersion_1 rng)
           (ref 'MaxVersion_1 rng))))))))
 
-(define (find-best-version conn id [supported (version-range 0 +inf.0)])
-  (define key (request-key id))
-  (define server-rng (hash-ref (connection-versions conn) key #f))
+(define (find-best-version conn key [supported (version-range 0 +inf.0)])
+  (define server-rng
+    (hash-ref (connection-versions conn) key #f))
   (and server-rng
        (<= (version-range-min supported)
            (version-range-max server-rng))
@@ -199,80 +200,3 @@
         (max (version-range-min supported)
              (min (version-range-max supported)
                   (version-range-max server-rng))))))
-
-
-;; request keys ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(provide
- request-key)
-
-(define-syntax (define-requests stx)
-  (syntax-parse stx
-    [(_ func-id:id request-id:id ...)
-     #:with (request-num ...) (for/list ([num (in-naturals)]
-                                         [stx (in-list (syntax-e #'(request-id ...)))])
-                                (datum->syntax stx num))
-     #'(define (func-id id)
-         (case id
-           [(request-id) request-num] ...
-           [else (raise-argument-error 'func-id "a valid request id" id)]))]))
-
-(define-requests request-key
-  Produce
-  Fetch
-  ListOffsets
-  Metadata
-  LeaderAndIsr
-  StopReplica
-  UpdateMetadata
-  ControlledShutdown
-  OffsetCommit
-  OffsetFetch
-  FindCoordinator
-  JoinGroup
-  Heartbeat
-  LeaveGroup
-  SyncGroup
-  DescribeGroups
-  ListGroups
-  SaslHandshake
-  ApiVersions
-  CreateTopics
-  DeleteTopics
-  DeleteRecords
-  InitProducerId
-  OffsetForLeaderEpoch
-  AddPartitionsToTxn
-  EndTxn
-  WriteTxnMarkers
-  TxnOffsetCommit
-  DescribeAcls
-  CreateAcls
-  DeleteAcls
-  DescribeConfigs
-  AlterConfigs
-  AlterReplicaLogDirs
-  DescribeLogDirs
-  SaslAuthenticate
-  CreatePartitions
-  CreateDelegationToken
-  RenewDelegationToken
-  ExpireDelegationToken
-  DescribeDelegationToken
-  DeleteGroups
-  ElectLeaders
-  IncrementalAlterConfigs
-  AlterPartitionReassignments
-  ListPartitionReassignments
-  OffsetDelete
-  DescribeClientQuotas
-  AlterClientQuotas
-  DescribeUserScramCredentials
-  AlterUserScramCredentials
-  AlterIsr
-  UpdateFeatures
-  DescribeCluster
-  DescribeProducers
-  DescribeTransactions
-  ListTransactions
-  AllocateProducerIds)

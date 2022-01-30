@@ -7,6 +7,7 @@
  null16
  null32
  ref
+ opt
  kstring
  kunbytes
  kunstring
@@ -25,6 +26,14 @@
      (cdr p)]
     [(id . args)
      (ref id (apply ref args))]))
+
+(define opt
+  (case-lambda
+    [(id v)
+     (define p (assq id v))
+     (and p (cdr p))]
+    [(id . args)
+     (opt id (apply ref args))]))
 
 (define (kstring s)
   (define bs (string->bytes/utf-8 s))

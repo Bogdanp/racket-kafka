@@ -49,7 +49,33 @@ Replica            = i32be;
 ISR                = i32be;
 
 
-## SaslHandshake (code 17, version 0)
+## Heartbeat (code 12)
+
+HeartbeatRequestV0 = GroupID GenerationID MemberID;
+GroupID            = String;
+GenerationID       = i32be;
+MemberID           = String;
+
+HeartbeatRequestV1 = HeartbeatRequestV0;
+HeartbeatRequestV2 = HeartbeatRequestV0;
+
+HeartbeatRequestV3 = GroupID GenerationID MemberID GroupInstanceID;
+GroupInstanceID    = String;
+
+HeartbeatRequestV4     = CompactGroupID GenerationID MemberID CompactGroupInstanceID Tags;
+CompactGroupID         = CompactString;
+CompactMemberID        = CompactString;
+CompactGroupInstanceID = CompactString;
+
+HeartbeatResponseV0 = ErrorCode;
+HeartbeatResponseV1 = ThrottleTimeMs ErrorCode;
+ThrottleTimeMs      = i32be;
+HeartbeatResponseV2 = HeartbeatResponseV1;
+HeartbeatResponseV3 = HeartbeatResponseV1;
+HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
+
+
+## SaslHandshake (code 17)
 
 SaslHandshakeRequest   = SaslHandshakeMechanism;
 SaslHandshakeMechanism = String;
@@ -58,7 +84,7 @@ SaslHandshakeResponse          = ErrorCode SaslHandshakeEnabledMechanisms;
 SaslHandshakeEnabledMechanisms = ArrayLen SaslHandshakeMechanism{ArrayLen_1};
 
 
-## APIVersions (code 18, version 0)
+## APIVersions (code 18)
 
 APIVersionsResponseV0 = ErrorCode ArrayLen APIVersionRange{ArrayLen_1};
 APIVersionRange       = APIKey MinVersion MaxVersion;
@@ -66,11 +92,48 @@ MinVersion            = i16be;
 MaxVersion            = i16be;
 
 
+## DeleteTopics (code 20)
+
+DeleteTopicsRequestV0 = TopicNames TimeoutMs;
+TimeoutMs             = i32be;
+DeleteTopicsRequestV1 = DeleteTopicsRequestV0;
+DeleteTopicsRequestV2 = DeleteTopicsRequestV0;
+DeleteTopicsRequestV3 = DeleteTopicsRequestV0;
+
+DeleteTopicsRequestV4 = CompactTopicNames TimeoutMs Tags;
+CompactTopicNames     = ArrayLen CompactTopicName{ArrayLen_1};
+CompactTopicName      = CompactString;
+DeleteTopicsRequestV5 = DeleteTopicsRequestV4;
+DeleteTopicsRequestV6 = DeleteTopicsRequestV4;
+
+DeleteTopicsResponseV0     = DeleteTopicsResponsesV0;
+DeleteTopicsResponsesV0    = ArrayLen DeleteTopicsResponseDataV0{ArrayLen_1};
+DeleteTopicsResponseDataV0 = TopicName ErrorCode;
+
+DeleteTopicsResponseV1     = ThrottleTimeMs DeleteTopicsResponsesV0;
+DeleteTopicsResponseV2     = ThrottleTimeMs DeleteTopicsResponsesV0;
+DeleteTopicsResponseV3     = ThrottleTimeMs DeleteTopicsResponsesV0;
+DeleteTopicsResponseV4     = ThrottleTimeMs DeleteTopicsResponsesV4 Tags;
+DeleteTopicsResponsesV4    = ArrayLen DeleteTopicsResponseDataV4{ArrayLen_1};
+DeleteTopicsResponseDataV4 = CompactTopicName ErrorCode Tags;
+DeleteTopicsResponseV5     = ThrottleTimeMs DeleteTopicsResponsesV5 Tags;
+DeleteTopicsResponsesV5    = ArrayLen DeleteTopicsResponseDataV5{ArrayLen_1};
+DeleteTopicsResponseDataV5 = CompactTopicName ErrorCode ErrorMessage Tags;
+DeleteTopicsResponseV6     = ThrottleTimeMs DeleteTopicsResponsesV6 Tags;
+DeleteTopicsResponsesV6    = ArrayLen DeleteTopicsResponseDataV6{ArrayLen_1};
+DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
+
+
 ## Common
+
+UUID = u8{16};
+
+Tags = TODO;
 
 Size         = i32be;
 
 ErrorCode    = i16be;
+ErrorMessage = CompactString;
 
 Bytes        = NullBytes | BytesLength BytesData{BytesLength_1};
 NullBytes    = 0xFF 0xFF 0xFF 0xFF;
