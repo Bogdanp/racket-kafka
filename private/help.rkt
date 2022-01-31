@@ -19,7 +19,7 @@
     [(id v)
      (define p (assq id v))
      (unless p
-       (error 'ref "key not found: ~s" id))
+       (error 'ref "key not found: ~s~n  have: ~e" id (map car v)))
      (cdr p)]
     [(id . args)
      (ref id (apply ref args))]))

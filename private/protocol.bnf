@@ -2,11 +2,19 @@
 
 ## RequestHeader
 
-RequestHeader = APIKey APIVersion CorrelationID ClientID;
-APIKey        = i16be;
-APIVersion    = i16be;
-CorrelationID = i32be;
-ClientID      = String;
+RequestHeaderV1 = APIKey APIVersion CorrelationID ClientID;
+APIKey          = i16be;
+APIVersion      = i16be;
+CorrelationID   = i32be;
+ClientID        = String;
+
+RequestHeaderV2 = APIKey APIVersion CorrelationID ClientID Tags;
+
+
+## ResponseHeader
+
+ResponseHeaderV1 = CorrelationID;
+ResponseHeaderV2 = CorrelationID Tags;
 
 
 ## Metadata (code 3)
@@ -110,40 +118,40 @@ DeleteTopicsRequestV2 = DeleteTopicsRequestV0;
 DeleteTopicsRequestV3 = DeleteTopicsRequestV0;
 
 DeleteTopicsRequestV4 = CompactTopicNames TimeoutMs Tags;
-CompactTopicNames     = ArrayLen CompactTopicName{ArrayLen_1};
+CompactTopicNames     = CompactArrayLen CompactTopicName{CompactArrayLen_1};
 CompactTopicName      = CompactString;
 DeleteTopicsRequestV5 = DeleteTopicsRequestV4;
 DeleteTopicsRequestV6 = DeleteTopicsRequestV4;
 
 DeleteTopicsResponseV0     = DeleteTopicsResponsesV0;
-DeleteTopicsResponsesV0    = ArrayLen DeleteTopicsResponseDataV0{ArrayLen_1};
+DeleteTopicsResponsesV0    = CompactArrayLen DeleteTopicsResponseDataV0{CompactArrayLen_1};
 DeleteTopicsResponseDataV0 = TopicName ErrorCode;
 
 DeleteTopicsResponseV1     = ThrottleTimeMs DeleteTopicsResponsesV0;
 DeleteTopicsResponseV2     = ThrottleTimeMs DeleteTopicsResponsesV0;
 DeleteTopicsResponseV3     = ThrottleTimeMs DeleteTopicsResponsesV0;
 DeleteTopicsResponseV4     = ThrottleTimeMs DeleteTopicsResponsesV4 Tags;
-DeleteTopicsResponsesV4    = ArrayLen DeleteTopicsResponseDataV4{ArrayLen_1};
+DeleteTopicsResponsesV4    = CompactArrayLen DeleteTopicsResponseDataV4{CompactArrayLen_1};
 DeleteTopicsResponseDataV4 = CompactTopicName ErrorCode Tags;
 DeleteTopicsResponseV5     = ThrottleTimeMs DeleteTopicsResponsesV5 Tags;
-DeleteTopicsResponsesV5    = ArrayLen DeleteTopicsResponseDataV5{ArrayLen_1};
+DeleteTopicsResponsesV5    = CompactArrayLen DeleteTopicsResponseDataV5{CompactArrayLen_1};
 DeleteTopicsResponseDataV5 = CompactTopicName ErrorCode ErrorMessage Tags;
 DeleteTopicsResponseV6     = ThrottleTimeMs DeleteTopicsResponsesV6 Tags;
-DeleteTopicsResponsesV6    = ArrayLen DeleteTopicsResponseDataV6{ArrayLen_1};
+DeleteTopicsResponsesV6    = CompactArrayLen DeleteTopicsResponseDataV6{CompactArrayLen_1};
 DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
 
 
 ## Common
 
 @foreign-parsers "protocol-native.rkt"
-  {Bytes         un-Bytes}
-  {CompactBytes  un-CompactBytes}
-  {CompactString un-CompactString}
-  {String        un-String}
-  {UUID          un-UUID}
+  {Bytes           un-Bytes}
+  {CompactArrayLen un-CompactArrayLen}
+  {CompactBytes    un-CompactBytes}
+  {CompactString   un-CompactString}
+  {String          un-String}
+  {Tags            un-Tags}
+  {UUID            un-UUID}
   ;
-
-Tags = TODO;
 
 Size         = i32be;
 

@@ -75,8 +75,12 @@
   (syntax-parse stx
     [(_ id:id
         (arg:request-arg ...)
-        (~seq #:code key:number)
-        (~seq #:version version-num:number parser:expr encoder:expr decoder:expr) ...+)
+        {~seq #:code key:number}
+        {~seq #:version version-num:number
+              {~optional {~seq #:flexible flexible}}
+              #:response parser:expr
+              encoder:expr
+              decoder:expr} ...+)
      #:with make-evt-id (format-id #'id "make-~a-evt" #'id)
      #:with version-rng-id (format-id #'id "~a-supported-versions" #'id)
      #:with version-rng (let ([versions (map syntax->datum (syntax-e #'(version-num ...)))])
@@ -86,14 +90,15 @@
      #'(begin
          (provide make-evt-id)
          (define version-rng-id version-rng)
-         (define (make-evt conn v data parser-proc proc)
+         (define (make-evt conn flexible? v data parser-proc proc)
            (handle-evt
             (make-request-evt
              conn
              #:key key
              #:version v
              #:data data
-             #:parser parser-proc)
+             #:parser parser-proc
+             #:flexible? flexible?)
             (lambda (res)
               (define err-code (or (opt 'ErrorCode_1 res) 0))
               (unless (zero? err-code)
@@ -101,5 +106,5 @@
               (proc res))))
          (define (make-evt-id conn arg ...)
            (case (find-best-version conn key version-rng-id)
-             [(version-num) (make-evt conn version-num (encoder arg.id ...) parser decoder)] ...
+             [(version-num) (make-evt conn {~? flexible #f} version-num (encoder arg.id ...) parser decoder)] ...
              [else (error 'make-evt-id "no supported version")])))]))

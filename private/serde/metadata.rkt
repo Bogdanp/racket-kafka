@@ -27,7 +27,8 @@
 
 (define-request Metadata (topics)
   #:code 3
-  #:version 1 proto:MetadataResponseV1
+  #:version 1
+  #:response proto:MetadataResponseV1
   (lambda (topics)
     (if (null? topics)
         null32

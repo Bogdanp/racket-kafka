@@ -14,20 +14,24 @@
    [group-instance-id #f]
    [tags (hasheqv)])
   #:code 12
-  #:version 0 proto:HeartbeatResponseV0
+  #:version 0
+  #:response proto:HeartbeatResponseV0
   enc-heartbeatv0
   (lambda (_res)
     (Heartbeat #f (hasheqv)))
 
-  #:version 1 proto:HeartbeatResponseV1
+  #:version 1
+  #:response proto:HeartbeatResponseV1
   enc-heartbeatv0
   dec-heartbeatv1
 
-  #:version 2 proto:HeartbeatResponseV2
+  #:version 2
+  #:response proto:HeartbeatResponseV2
   enc-heartbeatv0
   dec-heartbeatv1
 
-  #:version 3 proto:HeartbeatResponseV3
+  #:version 3
+  #:response proto:HeartbeatResponseV3
   (lambda (group-id generation-id member-id group-instance-id _tags)
     (with-output-bytes
       (proto:un-HeartbeatRequestV3

@@ -41,7 +41,7 @@
 
 (define-logger kafka)
 
-(struct req (parser res nack ch)
+(struct req (flexible? parser res nack ch)
   #:transparent)
 
 (define (set-req-response r response)
@@ -73,7 +73,6 @@
                            (loop #f seq reqs))]
                         [exn:fail?
                          (lambda (e)
-                           (println e)
                            (log-kafka-error "failed to process response: ~a" (exn-message e))
                            (loop ok? seq reqs))])
           (define size-in (read-port 4 in))
@@ -81,6 +80,9 @@
           (define resp-in (read-port size in))
           (define resp-id (proto:CorrelationID resp-in))
           (define the-req (hash-ref reqs resp-id #f))
+          (when (req-flexible? the-req)
+            ;; FIXME: must return tags
+            (void (proto:Tags resp-in)))
           (cond
             [the-req
              (define response ((req-parser the-req) resp-in))
@@ -95,17 +97,24 @@
           [`(disconnect)
            (close-output-port out)
            (close-input-port in)]
-          [`(request ,k ,v ,data ,parser ,nack ,ch)
+          [`(request ,flexible? ,k ,v ,tags ,data ,parser ,nack ,ch)
            (define id seq)
            (cond
              [ok?
               (define header-data
                 (with-output-bytes
-                  (proto:un-RequestHeader
-                   `((APIKey_1 . ,k)
-                     (APIVersion_1 . ,v)
-                     (CorrelationID_1 . ,id)
-                     (ClientID_1 . ,client-id)))))
+                  (if flexible?
+                      (proto:un-RequestHeaderV2
+                       `((APIKey_1 . ,k)
+                         (APIVersion_1 . ,v)
+                         (CorrelationID_1 . ,id)
+                         (ClientID_1 . ,client-id)
+                         (Tags_1 . ,tags)))
+                      (proto:un-RequestHeaderV1
+                       `((APIKey_1 . ,k)
+                         (APIVersion_1 . ,v)
+                         (CorrelationID_1 . ,id)
+                         (ClientID_1 . ,client-id))))))
               (define size-data
                 (with-output-bytes
                   (proto:un-Size (+ (bytes-length header-data)
@@ -115,7 +124,7 @@
               (write-bytes data out)
               (flush-output out)
               (define the-req
-                (req parser #f nack ch))
+                (req flexible? parser #f nack ch))
               (loop ok? (add1 seq) (hash-set reqs id the-req))]
              [else
               (define the-req
@@ -136,8 +145,10 @@
 (define (make-request-evt conn
                           #:key key
                           #:version v
+                          #:tags [tags (hasheqv)]
                           #:parser parser
-                          #:data [data #""])
+                          #:data [data #""]
+                          #:flexible? [flexible? #f])
   (define ch (make-channel))
   (handle-evt
    (nack-guard-evt
@@ -146,7 +157,7 @@
       (begin0 ch
         (channel-put
          (connection-ch conn)
-         `(request ,key ,v ,data ,parser ,nack ,ch)))))
+         `(request ,flexible? ,key ,v ,tags ,data ,parser ,nack ,ch)))))
    (lambda (res-or-exn)
      (begin0 res-or-exn
        (when (exn:fail? res-or-exn)

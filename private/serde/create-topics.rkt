@@ -21,7 +21,8 @@
   (topics
    [timeout-ms 30000])
   #:code 19
-  #:version 0 proto:CreateTopicsResponseV0
+  #:version 0
+  #:response proto:CreateTopicsResponseV0
   (lambda (topics timeout-ms)
     (define topic-requests
       (for/list ([t (in-list topics)])
