@@ -136,9 +136,12 @@ DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
 ## Common
 
 @foreign-parsers "protocol-native.rkt"
-  {UUID   un-UUID}
-  {Bytes  un-Bytes}
-  {String un-String};
+  {Bytes         un-Bytes}
+  {CompactBytes  un-CompactBytes}
+  {CompactString un-CompactString}
+  {String        un-String}
+  {UUID          un-UUID}
+  ;
 
 Tags = TODO;
 
@@ -149,5 +152,3 @@ ErrorMessage = CompactString;
 
 ArrayLen     = i32be;
 NullArray    = 0xFF 0xFF 0xFF 0xFF;
-
-CompactString = TODO;

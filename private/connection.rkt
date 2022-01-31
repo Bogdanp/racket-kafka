@@ -41,7 +41,8 @@
 
 (define-logger kafka)
 
-(struct req (parser res nack ch) #:transparent)
+(struct req (parser res nack ch)
+  #:transparent)
 
 (define (set-req-response r response)
   (struct-copy req r [res response]))
@@ -49,20 +50,22 @@
 (define (read-port amount in)
   (define bs (read-bytes amount in))
   (when (eof-object? bs)
-    (raise (exn:fail:network "unexpected EOF~n  the other end closed the connection prematurely"
-                             (current-continuation-marks))))
+    (raise
+     (exn:fail:network
+      "unexpected EOF\n  the other end closed the connection"
+      (current-continuation-marks))))
   (open-input-bytes bs))
 
 (define ((make-manager in out ch))
   (define client-id
     (current-client-id))
-  (let loop ([connected? #t]
+  (let loop ([ok? #t]
              [seq 0]
              [reqs (hasheqv)])
     (apply
      sync
      (handle-evt
-      (if connected? in never-evt)
+      (if ok? in never-evt)
       (lambda (_)
         (with-handlers ([exn:fail:network?
                          (lambda (e)
@@ -72,7 +75,7 @@
                          (lambda (e)
                            (println e)
                            (log-kafka-error "failed to process response: ~a" (exn-message e))
-                           (loop connected? seq reqs))])
+                           (loop ok? seq reqs))])
           (define size-in (read-port 4 in))
           (define size (proto:Size size-in))
           (define resp-in (read-port size in))
@@ -81,10 +84,10 @@
           (cond
             [the-req
              (define response ((req-parser the-req) resp-in))
-             (loop connected? seq (hash-set reqs resp-id (set-req-response the-req response)))]
+             (loop ok? seq (hash-set reqs resp-id (set-req-response the-req response)))]
             [else
              (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id)
-             (loop connected? seq reqs)]))))
+             (loop ok? seq reqs)]))))
      (handle-evt
       ch
       (lambda (msg)
@@ -95,7 +98,7 @@
           [`(request ,k ,v ,data ,parser ,nack ,ch)
            (define id seq)
            (cond
-             [connected?
+             [ok?
               (define header-data
                 (with-output-bytes
                   (proto:un-RequestHeader
@@ -113,28 +116,28 @@
               (flush-output out)
               (define the-req
                 (req parser #f nack ch))
-              (loop connected? (add1 seq) (hash-set reqs id the-req))]
+              (loop ok? (add1 seq) (hash-set reqs id the-req))]
              [else
               (define the-req
                 (req parser (kafka-error -1 "not connected") nack ch))
-              (loop connected? (add1 seq) (hash-set reqs id the-req))])])))
+              (loop ok? (add1 seq) (hash-set reqs id the-req))])])))
      (append
       (for/list ([(id r) (in-hash reqs)] #:when (req-res r))
         (handle-evt
          (channel-put-evt (req-ch r) (req-res r))
          (lambda (_)
-           (loop connected? seq (hash-remove reqs id)))))
+           (loop ok? seq (hash-remove reqs id)))))
       (for/list ([(id r) (in-hash reqs)])
         (handle-evt
          (req-nack r)
          (lambda (_)
-           (loop connected? seq (hash-remove reqs id)))))))))
+           (loop ok? seq (hash-remove reqs id)))))))))
 
 (define (make-request-evt conn
                           #:key key
                           #:version v
                           #:parser parser
-                          #:data data)
+                          #:data [data #""])
   (define ch (make-channel))
   (handle-evt
    (nack-guard-evt
@@ -166,8 +169,7 @@
      conn
      #:key 18
      #:version 0
-     #:parser proto:APIVersionsResponseV0
-     #:data #"")
+     #:parser proto:APIVersionsResponseV0)
     (lambda (res)
       (define err-code (ref 'ErrorCode_1 res))
       (unless (zero? err-code)

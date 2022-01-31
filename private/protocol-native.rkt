@@ -10,8 +10,12 @@
   [unparse-uuid un-UUID]
   [parse-bytes Bytes]
   [unparse-bytes un-Bytes]
+  [parse-compact-bytes CompactBytes]
+  [unparse-compact-bytes un-CompactBytes]
   [parse-string String]
-  [unparse-string un-String]))
+  [unparse-string un-String]
+  [parse-compact-string CompactString]
+  [unparse-compact-string un-CompactString]))
 
 (define (expect what len in)
   (define bs (read-bytes len in))
@@ -46,6 +50,19 @@
         (begin0 (ok bs)
           (write-bytes bs out))))]))
 
+(define (parse-compact-bytes in)
+  (res-bind
+   (parse-uvarint32 in)
+   (lambda (len)
+     (expect 'compact-bytes len in))))
+
+(define (unparse-compact-bytes out bs)
+  (res-bind
+   (unparse-uvarint32 out (bytes-length bs))
+   (lambda (_)
+     (begin0 (ok bs)
+       (write-bytes bs out)))))
+
 (define (parse-string in)
   (res-bind
    (parse-i16be in)
@@ -67,3 +84,19 @@
       (lambda (_)
         (begin0 (ok s)
           (write-bytes bs out))))]))
+
+(define (parse-compact-string in)
+  (res-bind
+   (parse-uvarint32 in)
+   (lambda (len)
+     (res-bind
+      (expect 'compact-string len in)
+      (compose1 ok bytes->string/utf-8)))))
+
+(define (unparse-compact-string out s)
+  (define bs (string->bytes/utf-8 s))
+  (res-bind
+   (unparse-uvarint32 out (bytes-length bs))
+   (lambda (_)
+     (begin0 (ok s)
+       (write-bytes bs out)))))
