@@ -74,9 +74,10 @@ HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
 
 SaslHandshakeRequestV0 = SaslHandshakeMechanism;
 SaslHandshakeMechanism = String;
+SaslHandshakeRequestV1 = SaslHandshakeRequestV0;
 
-SaslHandshakeResponseV0        = ErrorCode SaslHandshakeEnabledMechanisms;
-SaslHandshakeEnabledMechanisms = ArrayLen SaslHandshakeMechanism{ArrayLen_1};
+SaslHandshakeResponseV0 = ErrorCode ArrayLen SaslHandshakeMechanism{ArrayLen_1};
+SaslHandshakeResponseV1 = SaslHandshakeResponseV0;
 
 
 ## APIVersions (code 18)
@@ -139,6 +140,14 @@ DeleteTopicsResponseDataV5 = CompactTopicName ErrorCode ErrorMessage Tags;
 DeleteTopicsResponseV6     = ThrottleTimeMs DeleteTopicsResponsesV6 Tags;
 DeleteTopicsResponsesV6    = CompactArrayLen DeleteTopicsResponseDataV6{CompactArrayLen_1};
 DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
+
+
+## SaslAuthenticate (code 36)
+
+SaslAuthenticateRequestV1  = Bytes;
+SaslAuthenticateResponseV1 = ErrorCode SaslErrorMessage Bytes SessionLifetimeMs;
+SaslErrorMessage           = String;
+SessionLifetimeMs          = i64be;
 
 
 ## Common
