@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require racket/match
+(require openssl
+         racket/match
          racket/tcp
          "error.rkt"
          "help.rkt"
@@ -21,9 +22,11 @@
 
 (struct connection (ch mgr [versions #:mutable]))
 
-(define (connect [host "127.0.0.1"] [port 9092])
+(define (connect [host "127.0.0.1"] [port 9092] #:ssl [ssl-ctx #f])
   (define-values (in out)
-    (tcp-connect host port))
+    (if ssl-ctx
+        (ssl-connect host port ssl-ctx)
+        (tcp-connect host port)))
   (define ch (make-channel))
   (define mgr (thread/suspend-to-kill (make-manager in out ch)))
   (define conn (connection ch mgr (hasheqv)))
@@ -49,6 +52,7 @@
 
 (define (read-port amount in)
   (define bs (read-bytes amount in))
+  (log-kafka-debug "response bytes: ~s" bs)
   (when (eof-object? bs)
     (raise
      (exn:fail:network
