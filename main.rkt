@@ -23,14 +23,8 @@
   [delete-topics (-> connection? string? string? ... DeletedTopics?)]
   [authenticate (-> connection? symbol? (or/c sasl-ctx? bytes? string?) void?)]))
 
-(define (get-metadata conn . topics)
-  (sync (make-Metadata-evt conn topics)))
 
-(define (create-topics conn topic0 . topics)
-  (sync (make-CreateTopics-evt conn (cons topic0 topics))))
-
-(define (delete-topics conn topic0 . topics)
-  (sync (make-DeleteTopics-evt conn (cons topic0 topics))))
+;; common ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (authenticate conn mechanism ctx)
   (sync (make-SaslHandshake-evt conn mechanism))
@@ -59,3 +53,15 @@
           (define req (sasl-next-message ctx))
           (sync (make-SaslAuthenticate-evt conn req))]))])
   (void))
+
+
+;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (get-metadata conn . topics)
+  (sync (make-Metadata-evt conn topics)))
+
+(define (create-topics conn topic0 . topics)
+  (sync (make-CreateTopics-evt conn (cons topic0 topics))))
+
+(define (delete-topics conn topic0 . topics)
+  (sync (make-DeleteTopics-evt conn (cons topic0 topics))))

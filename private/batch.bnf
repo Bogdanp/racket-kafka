@@ -1,0 +1,51 @@
+#lang binfmt
+
+# This is the "V2" record batch format supported as of Kafka 0.11.  We
+# could eventually support the "V1" format and the even older message
+# sets, but we might not have to given that Kafka 0.11 was released in
+# 2018.
+
+# BaseOffset & PartitionLeaderEpoch are set by the broker on produced
+# batches.  Likewise for the TimestampDelta and OffsetDelta fields on
+# records.
+
+# The last field in a RecordBatch is the set of records.  That is not
+# represented here because it can either be an array of records (a
+# varint followed by that number of records), or a compressed blob of
+# records, depending on the BatchAttributes so the RecordBatch user is
+# expected to parse the RecordBatch and then decide how to parse the
+# records themselves.
+
+RecordBatch          = BaseOffset BatchLength PartitionLeaderEpoch Magic CRC BatchAttributes
+                       LastOffsetDelta FirstTimestamp MaxTimestamp ProducerID ProducerEpoch
+                       BaseSequence;
+BaseOffset           = i64be;
+BatchLength          = i32be;
+PartitionLeaderEpoch = i32be;
+Magic                = i8;
+CRC                  = u32be;
+BatchAttributes      = i16be;
+LastOffsetDelta      = i32be;
+FirstTimestamp       = i64be;
+MaxTimestamp         = i64be;
+ProducerID           = i64be;
+ProducerEpoch        = i16be;
+BaseSequence         = i32be;
+RecordCount          = varint32;
+
+Record         = Length Attributes TimestampDelta OffsetDelta Key Value Headers;
+Length         = varint32;
+Attributes     = i8;
+TimestampDelta = varint64;
+OffsetDelta    = varint32;
+Key            = CompactBytes;
+Value          = CompactBytes;
+Headers        = varint32 Header{varint32_1};
+Header         = HeaderKey HeaderValue;
+HeaderKey      = CompactString;
+HeaderValue    = CompactBytes;
+
+@foreign-parsers "protocol-native.rkt"
+  {CompactBytes  un-CompactBytes}
+  {CompactString un-CompactString}
+  ;
