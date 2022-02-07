@@ -17,11 +17,63 @@ ResponseHeaderV1 = CorrelationID;
 ResponseHeaderV2 = CorrelationID Tags;
 
 
+## Produce (code 0)
+
+ProduceRequestV0     = Acks TimeoutMs ArrayLen TopicData{ArrayLen_1};
+Acks                 = i16be;
+TimeoutMs            = i32be;
+TopicData            = TopicName ArrayLen PartitionData{ArrayLen_1};
+TopicName            = String;
+PartitionData        = PartitionIndex Records;
+PartitionIndex       = i32be;
+Records              = TODO;
+ProduceRequestV1     = ProduceRequestV0;
+ProduceRequestV2     = ProduceRequestV0;
+ProduceRequestV3     = TransactionalID Acks TimeoutMs ArrayLen TopicData{ArrayLen_1};
+TransactionalID      = String;
+ProduceRequestV4     = ProduceRequestV3;
+ProduceRequestV5     = ProduceRequestV3;
+ProduceRequestV6     = ProduceRequestV3;
+ProduceRequestV7     = ProduceRequestV3;
+ProduceRequestV8     = ProduceRequestV3;
+ProduceRequestV9     = CompactTxnID Acks TimeoutMs ArrayLen CompactTopicData{ArrayLen_1} Tags;
+CompactTxnID         = CompactString;
+CompactTopicData     = CompactTopicName ArrayLen CompactPartitionData{ArrayLen_1} Tags;
+CompactPartitionData = PartitionIndex CompactRecords;
+CompactRecords       = TODO;
+
+ProduceResponseV0     = ArrayLen ProduceResponseDataV0{ArrayLen_1};
+ProduceResponseDataV0 = TopicName ArrayLen PartitionResponseV0{ArrayLen_1};
+PartitionResponseV0   = PartitionIndex ErrorCode Offset;
+Offset                = i64be;
+ProduceResponseV1     = ArrayLen ProduceResponseDataV0{ArrayLen_1} ThrottleTimeMs;
+ProduceResponseV2     = ArrayLen ProduceResponseDataV2{ArrayLen_1} ThrottleTimeMs;
+ProduceResponseDataV2 = TopicName ArrayLen PartitionResponseV2{ArrayLen_1};
+PartitionResponseV2   = PartitionIndex ErrorCode Offset LogAppendTimeMs;
+LogAppendTimeMs       = i64be;
+ProduceResponseV3     = ProduceResponseV2;
+ProduceResponseV4     = ProduceResponseV2;
+ProduceResponseV5     = ArrayLen ProduceResponseDataV5{ArrayLen_1} ThrottleTimeMs;
+ProduceResponseDataV5 = TopicName ArrayLen PartitionResponseV5{ArrayLen_1};
+PartitionResponseV5   = PartitionIndex ErrorCode Offset LogAppendTimeMs LogStartOffset;
+LogStartOffset        = i64be;
+ProduceResponseV6     = ProduceResponseV5;
+ProduceResponseV7     = ProduceResponseV5;
+ProduceResponseV8     = ArrayLen ProduceResponseDataV8{ArrayLen_1} ThrottleTimeMs;
+ProduceResponseDataV8 = TopicName PartitionResponseV8{ArrayLen_1};
+PartitionResponseV8   = PartitionIndex ErrorCode Offset LogAppendTimeMs LogStartOffset ArrayLen RecordError{ArrayLen_1} ErrorMessage;
+RecordError           = BatchIndex ErrorMessage;
+BatchIndex            = i32be;
+ProduceResponseV9     = ArrayLen ProduceResponseDataV9{ArrayLen_1} ThrottleTimeMs Tags;
+ProduceResponseDataV9 = CompactTopicName ArrayLen PartitionResponseV9{ArrayLen_1} Tags;
+PartitionResponseV9   = PartitionIndex ErrorCode Offset LogAppendTimeMs LogStartOffset ArrayLen CompactRecordError{ArrayLen_1} CompactErrorMessage Tags;
+CompactRecordError    = BatchIndex CompactErrorMessage Tags;
+
+
 ## Metadata (code 3)
 
 MetadataRequestV1 = TopicNames;
 TopicNames        = ArrayLen TopicName{ArrayLen_1};
-TopicName         = String;
 
 MetadataResponseV1 = Brokers ControllerID TopicMetadatas;
 Brokers            = ArrayLen Broker{ArrayLen_1};
@@ -97,14 +149,12 @@ NumPartitions          = i32be;
 ReplicationFactor      = i16be;
 Assignments            = ArrayLen Assignment{ArrayLen_1};
 Assignment             = PartitionIndex BrokerIDs;
-PartitionIndex         = i32be;
 BrokerIDs              = ArrayLen BrokerID{ArrayLen_1};
 BrokerID               = i32be;
 Configs                = ArrayLen Config{ArrayLen_1};
 Config                 = ConfigName ConfigValue;
 ConfigName             = String;
 ConfigValue            = String;
-TimeoutMs              = i32be;
 
 CreateTopicsResponseV0       = CreateTopicsResponseTopicsV0;
 CreateTopicsResponseTopicsV0 = ArrayLen CreateTopicsResponseTopicV0{ArrayLen_1};
@@ -136,10 +186,10 @@ DeleteTopicsResponsesV4    = CompactArrayLen DeleteTopicsResponseDataV4{CompactA
 DeleteTopicsResponseDataV4 = CompactTopicName ErrorCode Tags;
 DeleteTopicsResponseV5     = ThrottleTimeMs DeleteTopicsResponsesV5 Tags;
 DeleteTopicsResponsesV5    = CompactArrayLen DeleteTopicsResponseDataV5{CompactArrayLen_1};
-DeleteTopicsResponseDataV5 = CompactTopicName ErrorCode ErrorMessage Tags;
+DeleteTopicsResponseDataV5 = CompactTopicName ErrorCode CompactErrorMessage Tags;
 DeleteTopicsResponseV6     = ThrottleTimeMs DeleteTopicsResponsesV6 Tags;
 DeleteTopicsResponsesV6    = CompactArrayLen DeleteTopicsResponseDataV6{CompactArrayLen_1};
-DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode ErrorMessage Tags;
+DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode CompactErrorMessage Tags;
 
 
 ## SaslAuthenticate (code 36)
@@ -164,8 +214,9 @@ SessionLifetimeMs          = i64be;
 
 Size         = i32be;
 
-ErrorCode    = i16be;
-ErrorMessage = CompactString;
+ErrorCode           = i16be;
+ErrorMessage        = String;
+CompactErrorMessage = CompactString;
 
 ArrayLen     = i32be;
 NullArray    = 0xFF 0xFF 0xFF 0xFF;
