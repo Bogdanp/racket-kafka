@@ -1,11 +1,15 @@
 #lang racket/base
 
-(require racket/fixnum)
+(require (for-syntax racket/base
+                     racket/fixnum)
+         racket/fixnum)
 
 (provide
- make-crc
- crc-update
- crc-finalize)
+ crc-update)
+
+(begin-for-syntax
+  (unless (> (most-positive-fixnum) #xFFFFFFFF)
+    (error 'crc "the CRC implementation requires fixnums to be at least 32bit wide")))
 
 (define mask #xFFFFFFFF)
 (define table
@@ -75,11 +79,6 @@
    #x79b737ba #x8bdcb4b9 #x988c474d #x6ae7c44e
    #xbe2da0a5 #x4c4623a6 #x5f16d052 #xad7d5351))
 
-(define (make-crc)
-  (when (< (most-positive-fixnum) mask)
-    (error 'make-crc "CRC implementation requires fixnums to be at least 32bit"))
-  0)
-
 (define (crc-update crc bs [start 0] [end (bytes-length bs)])
   (for/fold ([crc (fxxor crc mask)] #:result (fxxor crc mask))
             ([b (in-bytes bs start (sub1 end))])
@@ -87,5 +86,6 @@
     (define v (fxvector-ref table idx))
     (fxand (fxxor v (fxrshift crc 8)) mask)))
 
-(define (crc-finalize crc)
-  (fxand crc mask))
+(module+ test
+  (require rackunit)
+  (check-equal? (crc-update 0 #"hello") 2694444340))

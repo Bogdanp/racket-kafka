@@ -111,7 +111,7 @@
   ;; buf[5...8]: CRC
   ;; buf[9...n]: CRC-able data
   (define crc-bytes
-    (let* ([crc (make-crc)]
+    (let* ([crc 0]
            [crc (crc-update crc (record-data-bs buf)  9 (record-data-len buf))]
            [crc (crc-update crc (record-data-bs data) 0 (record-data-len data))])
       (call-with-output-bytes
@@ -179,6 +179,14 @@
 (define (make-record-data [cap (* 16 1024)])
   (record-data 0 (make-bytes cap)))
 
+(define (record-data-bytes rd)
+  (subbytes (record-data-bs rd) 0 (record-data-len rd)))
+
+(define (record-data-set! rd k src)
+  (define dst (record-data-bs rd))
+  (for ([(b idx) (in-indexed (in-bytes src))])
+    (bytes-set! dst (+ k idx) b)))
+
 (define (reset-record-data! rd)
   (set-record-data-len! rd 0))
 
@@ -199,15 +207,13 @@
      (bytes-copy! bs len src start end)
      (set-record-data-len! rd (+ len needed))]))
 
-(define ((make-record-data-write-out rd) bs start end _flush? _enable-breaks?)
-  (append-record-data! rd bs start end)
-  (- end start))
-
 (define (open-output-record-data rd)
   (make-output-port
    'record-data
    always-evt
-   (make-record-data-write-out rd)
+   (λ (bs start end _flush? _enable-breaks?)
+     (begin0 (- end start)
+       (append-record-data! rd bs start end)))
    void))
 
 (define (open-output-record-data/gzip rd)
@@ -219,13 +225,5 @@
      (lambda ()
        (gzip-through-ports in rd-out #f (current-seconds))))))
 
-(define (record-data-bytes rd)
-  (subbytes (record-data-bs rd) 0 (record-data-len rd)))
-
 (define (copy-record-data rd out)
   (write-bytes (record-data-bs rd) out 0 (record-data-len rd)))
-
-(define (record-data-set! rd k src)
-  (define dst (record-data-bs rd))
-  (for ([(b idx) (in-indexed (in-bytes src))])
-    (bytes-set! dst (+ k idx) b)))
