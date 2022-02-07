@@ -5,3 +5,4 @@
 (define deps '("base"
                "binfmt"
                "sasl-lib"))
+(define build-deps '("rackunit-lib"))
