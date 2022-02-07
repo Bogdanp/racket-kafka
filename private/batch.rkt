@@ -8,6 +8,7 @@
 (provide
  batch?
  make-batch
+ batch-len
  batch-size
  batch-append!
  write-batch)
@@ -17,8 +18,8 @@
    partition-leader-epoch
    attributes
    last-offset-delta
-   first-timestamp
-   max-timestamp
+   [first-timestamp #:mutable]
+   [max-timestamp #:mutable]
    producer-id
    producer-epoch
    base-sequence
@@ -40,7 +41,7 @@
    0 ;; partition leader epoch
    attributes
    0 ;; last-offset-delta
-   0 ;; first-timestamp
+   #f ;; first-timestamp
    0 ;; max-timestamp
    0 ;; producer-id
    0 ;; producer-epoch
@@ -59,18 +60,30 @@
     [(#b100) 'zstd]
     [else (error 'batch-compression "unknown compression")]))
 
-(define (batch-append! b k v)
+(define (batch-len b)
+  (record-data-len (batch-data b)))
+
+(define (batch-append! b k v
+                       #:headers [headers (hash)]
+                       #:timestamp [timestamp (current-milliseconds)])
+  (unless (batch-first-timestamp b)
+    (set-batch-first-timestamp! b timestamp))
+  (when (< (batch-max-timestamp b) timestamp)
+    (set-batch-max-timestamp! b timestamp))
+
   (define buf (batch-buf b))
   (define buf-out (open-output-record-data buf))
   (reset-record-data! buf)
   (proto:un-Attributes 0 buf-out)
-  (proto:un-TimestampDelta 0 buf-out)
+  (proto:un-TimestampDelta (- timestamp (batch-first-timestamp b)) buf-out)
   (proto:un-OffsetDelta 0 buf-out)
   (proto:un-Key k buf-out)
   (proto:un-Value v buf-out)
   (proto:un-Headers
-   `((varint32_1 . 0)
-     (Header_1 . ()))
+   `((HeadersLen_1 . ,(hash-count headers))
+     (Header_1 . ,(for/list ([(k v) (in-hash headers)])
+                    `((Key_1   . ,k)
+                      (Value_1 . ,v)))))
    buf-out)
 
   (define data-out (batch-data-out b))
@@ -89,8 +102,8 @@
   (proto:un-CRC 0 buf-out)
   (proto:un-BatchAttributes (batch-attributes b) buf-out)
   (proto:un-LastOffsetDelta 0 buf-out)
-  (proto:un-FirstTimestamp 0 buf-out)
-  (proto:un-MaxTimestamp 0 buf-out)
+  (proto:un-FirstTimestamp (batch-first-timestamp b) buf-out)
+  (proto:un-MaxTimestamp (batch-max-timestamp b) buf-out)
   (proto:un-ProducerID 0 buf-out)
   (proto:un-ProducerEpoch 0 buf-out)
   (proto:un-BaseSequence 0 buf-out)
@@ -126,8 +139,8 @@
 
   (test-case "round trip"
     (define b (make-batch))
-    (batch-append! b #"a" #"1")
-    (batch-append! b #"b" #"2")
+    (batch-append! b #"a" #"1" #:timestamp 5)
+    (batch-append! b #"b" #"2" #:timestamp 20)
     (define batch-bs
       (call-with-output-bytes
        (lambda (out)
@@ -140,17 +153,15 @@
        (BatchLength_1 . 64)
        (PartitionLeaderEpoch_1 . 0)
        (Magic_1 . 2)
-       (CRC_1 . 3353461548)
+       (CRC_1 . 2292478626)
        (BatchAttributes_1 . 0)
        (LastOffsetDelta_1 . 0)
-       (FirstTimestamp_1 . 0)
-       (MaxTimestamp_1 . 0)
+       (FirstTimestamp_1 . 5)
+       (MaxTimestamp_1 . 20)
        (ProducerID_1 . 0)
        (ProducerEpoch_1 . 0)
        (BaseSequence_1 . 0)))
-    (check-equal?
-     (proto:RecordCount batch-bs-in)
-     2)
+    (check-equal? (proto:RecordCount batch-bs-in) 2)
     (check-equal?
      (proto:Record batch-bs-in)
      '((Length_1 . 8)
@@ -159,16 +170,16 @@
        (OffsetDelta_1 . 0)
        (Key_1 . #"a")
        (Value_1 . #"1")
-       (Headers_1 (varint32_1 . 0) (Header_1))))
+       (Headers_1 (HeadersLen_1 . 0) (Header_1))))
     (check-equal?
      (proto:Record batch-bs-in)
      '((Length_1 . 8)
        (Attributes_1 . 0)
-       (TimestampDelta_1 . 0)
+       (TimestampDelta_1 . 15)
        (OffsetDelta_1 . 0)
        (Key_1 . #"b")
        (Value_1 . #"2")
-       (Headers_1 (varint32_1 . 0) (Header_1))))))
+       (Headers_1 (HeadersLen_1 . 0) (Header_1))))))
 
 
 ;; record-data ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -178,9 +189,6 @@
 
 (define (make-record-data [cap (* 16 1024)])
   (record-data 0 (make-bytes cap)))
-
-(define (record-data-bytes rd)
-  (subbytes (record-data-bs rd) 0 (record-data-len rd)))
 
 (define (record-data-set! rd k src)
   (define dst (record-data-bs rd))
