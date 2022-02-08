@@ -2,21 +2,33 @@
 
 (provide
  exn:fail:kafka?
- exn:fail:kafka-code
- kafka-error
- raise-kafka-error)
+ exn:fail:kafka:client?
+ exn:fail:kafka:server?
+ exn:fail:kafka:server-code
+ client-error
+ raise-client-error
+ server-error
+ raise-server-error)
 
-(struct exn:fail:kafka exn:fail (code))
+(struct exn:fail:kafka exn:fail ())
+(struct exn:fail:kafka:server exn:fail:kafka (code))
+(struct exn:fail:kafka:client exn:fail:kafka ())
 
-(define kafka-error
+(define (client-error message . args)
+  (exn:fail:kafka:client (apply format message args) (current-continuation-marks)))
+
+(define (raise-client-error . args)
+  (raise (apply client-error args)))
+
+(define server-error
   (case-lambda
     [(code)
-     (kafka-error code (error-code-message code))]
+     (server-error code (error-code-message code))]
     [(code message . args)
-     (exn:fail:kafka (apply format message args) (current-continuation-marks) code)]))
+     (exn:fail:kafka:server (apply format message args) (current-continuation-marks) code)]))
 
-(define (raise-kafka-error . args)
-  (raise (apply kafka-error args)))
+(define (raise-server-error . args)
+  (raise (apply server-error args)))
 
 (define-syntax-rule (define-error-codes id [code message] ...)
   (define (id c)

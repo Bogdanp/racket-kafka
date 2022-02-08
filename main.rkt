@@ -11,11 +11,15 @@
  (all-from-out "private/serde.rkt")
  (contract-out
   [exn:fail:kafka? (-> any/c boolean?)]
-  [exn:fail:kafka-code (-> exn:fail:kafka? exact-integer?)]
+  [exn:fail:kafka:client? (-> any/c boolean?)]
+  [exn:fail:kafka:server? (-> any/c boolean?)]
+  [exn:fail:kafka:server-code (-> exn:fail:kafka:server? exact-integer?)]
   [current-client-id (parameter/c string?)]
   [connection? (-> any/c boolean?)]
-  [connect (->* (string? (integer-in 0 65535))
-                (#:ssl ssl-client-context?)
+  [connect (->* ()
+                (string?
+                 (integer-in 0 65535)
+                 #:ssl ssl-client-context?)
                 connection?)]
   [disconnect (-> connection? void)]
   [get-metadata (-> connection? string? ... Metadata?)]

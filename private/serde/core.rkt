@@ -102,7 +102,7 @@
             (lambda (res)
               (define err-code (or (opt 'ErrorCode_1 res) 0))
               (unless (zero? err-code)
-                (raise-kafka-error err-code))
+                (raise-server-error err-code))
               (proc res))))
          (define (make-evt-id conn arg ...)
            (case (find-best-version conn key version-rng-id)

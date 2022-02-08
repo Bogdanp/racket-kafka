@@ -84,11 +84,11 @@
           (define resp-in (read-port size in))
           (define resp-id (proto:CorrelationID resp-in))
           (define the-req (hash-ref reqs resp-id #f))
-          (when (req-flexible? the-req)
-            ;; FIXME: must return tags
-            (void (proto:Tags resp-in)))
           (cond
             [the-req
+             (when (req-flexible? the-req)
+               ;; FIXME: must return tags
+               (void (proto:Tags resp-in)))
              (define response ((req-parser the-req) resp-in))
              (loop ok? seq (hash-set reqs resp-id (set-req-response the-req response)))]
             [else
@@ -132,7 +132,7 @@
               (loop ok? (add1 seq) (hash-set reqs id the-req))]
              [else
               (define the-req
-                (req parser (kafka-error -1 "not connected") nack ch))
+                (req flexible? parser (server-error -1 "not connected") nack ch))
               (loop ok? (add1 seq) (hash-set reqs id the-req))])])))
      (append
       (for/list ([(id r) (in-hash reqs)] #:when (req-res r))
@@ -188,7 +188,7 @@
     (lambda (res)
       (define err-code (ref 'ErrorCode_1 res))
       (unless (zero? err-code)
-        (raise-kafka-error err-code))
+        (raise-server-error err-code))
       (for/hasheqv ([rng (in-list (ref 'APIVersionRange_1 res))])
         (values
          (ref 'APIKey_1 rng)
