@@ -37,8 +37,8 @@
       [(gzip) (values #x01 (open-output-record-data/gzip data))]
       [else (raise-arguments-error 'make-batch "(or/c 'none 'gzip)" "compression" compression)]))
   (batch
-   0 ;; base offset
-   0 ;; partition leader epoch
+   0 ;; base-offset
+   0 ;; partition-leader-epoch
    attributes
    0 ;; last-offset-delta
    #f ;; first-timestamp
@@ -107,9 +107,7 @@
   (proto:un-ProducerID 0 buf-out)
   (proto:un-ProducerEpoch 0 buf-out)
   (proto:un-BaseSequence 0 buf-out)
-  (case (batch-compression b)
-    [(none) (proto:un-RecordCount (batch-size b) buf-out)]
-    [else (void)])
+  (proto:un-RecordCount (batch-size b) buf-out)
 
   (define data
     (batch-data b))
@@ -150,10 +148,10 @@
     (check-equal?
      (proto:RecordBatch batch-bs-in)
      '((BaseOffset_1 . 0)
-       (BatchLength_1 . 64)
+       (BatchLength_1 . 67)
        (PartitionLeaderEpoch_1 . 0)
        (Magic_1 . 2)
-       (CRC_1 . 2292478626)
+       (CRC_1 . 2716349033)
        (BatchAttributes_1 . 0)
        (LastOffsetDelta_1 . 0)
        (FirstTimestamp_1 . 5)

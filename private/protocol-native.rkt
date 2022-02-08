@@ -19,7 +19,9 @@
   [parse-compact-array-len CompactArrayLen]
   [unparse-compact-array-len un-CompactArrayLen]
   [parse-tags Tags]
-  [unparse-tags un-Tags]))
+  [unparse-tags un-Tags]
+  [parse-records Records]
+  [unparse-records un-Records]))
 
 (define (expect what len in)
   (define bs (read-bytes len in))
@@ -173,3 +175,10 @@
    (unparse-uvarint32 out (car v))
    (lambda (_)
      (unparse-compact-bytes out (cdr v)))))
+
+(define (parse-records _in)
+  (error 'parse-records "not implemented"))
+
+(define (unparse-records out v)
+  (begin0 (ok v)
+    (write-bytes v out)))

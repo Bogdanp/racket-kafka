@@ -26,7 +26,6 @@ TopicData            = TopicName ArrayLen PartitionData{ArrayLen_1};
 TopicName            = String;
 PartitionData        = PartitionIndex Records;
 PartitionIndex       = i32be;
-Records              = TODO;
 ProduceRequestV1     = ProduceRequestV0;
 ProduceRequestV2     = ProduceRequestV0;
 ProduceRequestV3     = TransactionalID Acks TimeoutMs ArrayLen TopicData{ArrayLen_1};
@@ -207,6 +206,7 @@ SessionLifetimeMs          = i64be;
   {CompactArrayLen un-CompactArrayLen}
   {CompactBytes    un-CompactBytes}
   {CompactString   un-CompactString}
+  {Records         un-Records}
   {String          un-String}
   {Tags            un-Tags}
   {UUID            un-UUID}

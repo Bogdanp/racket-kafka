@@ -31,7 +31,7 @@ MaxTimestamp         = i64be;
 ProducerID           = i64be;
 ProducerEpoch        = i16be;
 BaseSequence         = i32be;
-RecordCount          = varint32;
+RecordCount          = i32be;
 
 Record         = Length Attributes TimestampDelta OffsetDelta Key Value Headers;
 Length         = varint32;
