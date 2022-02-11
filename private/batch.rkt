@@ -8,6 +8,7 @@
 (provide
  batch?
  make-batch
+ batch-compression
  batch-len
  batch-size
  batch-append!
@@ -76,7 +77,7 @@
   (reset-record-data! buf)
   (proto:un-Attributes 0 buf-out)
   (proto:un-TimestampDelta (- timestamp (batch-first-timestamp b)) buf-out)
-  (proto:un-OffsetDelta 0 buf-out)
+  (proto:un-OffsetDelta (batch-size b) buf-out)
   (proto:un-Key k buf-out)
   (proto:un-Value v buf-out)
   (proto:un-Headers
@@ -101,13 +102,14 @@
   (proto:un-Magic 2 buf-out)
   (proto:un-CRC 0 buf-out)
   (proto:un-BatchAttributes (batch-attributes b) buf-out)
-  (proto:un-LastOffsetDelta 0 buf-out)
+  (proto:un-LastOffsetDelta (sub1 (batch-size b)) buf-out)
   (proto:un-FirstTimestamp (batch-first-timestamp b) buf-out)
   (proto:un-MaxTimestamp (batch-max-timestamp b) buf-out)
-  (proto:un-ProducerID 0 buf-out)
-  (proto:un-ProducerEpoch 0 buf-out)
-  (proto:un-BaseSequence 0 buf-out)
+  (proto:un-ProducerID -1 buf-out)
+  (proto:un-ProducerEpoch -1 buf-out)
+  (proto:un-BaseSequence -1 buf-out)
   (proto:un-RecordCount (batch-size b) buf-out)
+
 
   (define data
     (batch-data b))
@@ -122,8 +124,7 @@
   ;; buf[5...8]: CRC
   ;; buf[9...n]: CRC-able data
   (define crc-bytes
-    (let* ([crc 0]
-           [crc (crc-update crc (record-data-bs buf)  9 (record-data-len buf))]
+    (let* ([crc (crc (record-data-bs buf) 9 (record-data-len buf))]
            [crc (crc-update crc (record-data-bs data) 0 (record-data-len data))])
       (call-with-output-bytes
        (lambda (crc-out)
@@ -151,15 +152,15 @@
        (BatchLength_1 . 67)
        (PartitionLeaderEpoch_1 . 0)
        (Magic_1 . 2)
-       (CRC_1 . 2716349033)
+       (CRC_1 . 3907180471)
        (BatchAttributes_1 . 0)
-       (LastOffsetDelta_1 . 0)
+       (LastOffsetDelta_1 . 1)
        (FirstTimestamp_1 . 5)
        (MaxTimestamp_1 . 20)
        (ProducerID_1 . 0)
        (ProducerEpoch_1 . 0)
-       (BaseSequence_1 . 0)))
-    (check-equal? (proto:RecordCount batch-bs-in) 2)
+       (BaseSequence_1 . 0)
+       (RecordCount_1 . 2)))
     (check-equal?
      (proto:Record batch-bs-in)
      '((Length_1 . 8)
@@ -174,7 +175,7 @@
      '((Length_1 . 8)
        (Attributes_1 . 0)
        (TimestampDelta_1 . 15)
-       (OffsetDelta_1 . 0)
+       (OffsetDelta_1 . 1)
        (Key_1 . #"b")
        (Value_1 . #"2")
        (Headers_1 (HeadersLen_1 . 0) (Header_1))))))

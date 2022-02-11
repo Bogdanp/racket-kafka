@@ -10,18 +10,20 @@
   [unparse-uuid un-UUID]
   [parse-bytes Bytes]
   [unparse-bytes un-Bytes]
+  [parse-batch-bytes BatchBytes]
+  [unparse-batch-bytes un-BatchBytes]
   [parse-compact-bytes CompactBytes]
   [unparse-compact-bytes un-CompactBytes]
   [parse-string String]
   [unparse-string un-String]
+  [parse-batch-string BatchString]
+  [unparse-batch-string un-BatchString]
   [parse-compact-string CompactString]
   [unparse-compact-string un-CompactString]
   [parse-compact-array-len CompactArrayLen]
   [unparse-compact-array-len un-CompactArrayLen]
   [parse-tags Tags]
-  [unparse-tags un-Tags]
-  [parse-records Records]
-  [unparse-records un-Records]))
+  [unparse-tags un-Tags]))
 
 (define (expect what len in)
   (define bs (read-bytes len in))
@@ -55,6 +57,19 @@
       (lambda (_)
         (begin0 (ok bs)
           (write-bytes bs out))))]))
+
+(define (parse-batch-bytes in)
+  (res-bind
+   (parse-varint32 in)
+   (lambda (len)
+     (expect 'batch-bytes len in))))
+
+(define (unparse-batch-bytes out bs)
+  (res-bind
+   (unparse-varint32 out (bytes-length bs))
+   (lambda (_)
+     (begin0 (ok bs)
+       (write-bytes bs out)))))
 
 (define (parse-compact-bytes in)
   (res-bind
@@ -95,6 +110,22 @@
       (lambda (_)
         (begin0 (ok s)
           (write-bytes bs out))))]))
+
+(define (parse-batch-string in)
+  (res-bind
+   (parse-varint32 in)
+   (lambda (len)
+     (res-bind
+      (expect 'batch-string len in)
+      (compose1 ok bytes->string/utf-8)))))
+
+(define (unparse-batch-string out s)
+  (define bs (string->bytes/utf-8 s))
+  (res-bind
+   (unparse-varint32 out (bytes-length bs))
+   (lambda (_)
+     (begin0 (ok s)
+       (write-bytes bs out)))))
 
 (define (parse-compact-string in)
   (res-bind
@@ -175,10 +206,3 @@
    (unparse-uvarint32 out (car v))
    (lambda (_)
      (unparse-compact-bytes out (cdr v)))))
-
-(define (parse-records _in)
-  (error 'parse-records "not implemented"))
-
-(define (unparse-records out v)
-  (begin0 (ok v)
-    (write-bytes v out)))

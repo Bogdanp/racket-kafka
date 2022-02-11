@@ -201,12 +201,15 @@ SessionLifetimeMs          = i64be;
 
 ## Common
 
+@foreign-parsers "batch-native.rkt"
+  {Records         un-Records}
+  ;
+
 @foreign-parsers "protocol-native.rkt"
   {Bytes           un-Bytes}
   {CompactArrayLen un-CompactArrayLen}
   {CompactBytes    un-CompactBytes}
   {CompactString   un-CompactString}
-  {Records         un-Records}
   {String          un-String}
   {Tags            un-Tags}
   {UUID            un-UUID}

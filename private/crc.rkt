@@ -5,6 +5,7 @@
          racket/fixnum)
 
 (provide
+ crc
  crc-update)
 
 (begin-for-syntax
@@ -79,13 +80,29 @@
    #x79b737ba #x8bdcb4b9 #x988c474d #x6ae7c44e
    #xbe2da0a5 #x4c4623a6 #x5f16d052 #xad7d5351))
 
-(define (crc-update crc bs [start 0] [end (bytes-length bs)])
-  (for/fold ([crc (fxxor crc mask)] #:result (fxxor crc mask))
-            ([b (in-bytes bs start (sub1 end))])
-    (define idx (fxand (fxxor crc b) #xFF))
+(define (crc-update n bs [start 0] [end (bytes-length bs)])
+  (for/fold ([n (fxxor n mask)] #:result (fxxor n mask))
+            ([b (in-bytes bs start end)])
+    (define idx (fxand (fxxor n b) #xFF))
     (define v (fxvector-ref table idx))
-    (fxand (fxxor v (fxrshift crc 8)) mask)))
+    (fxand (fxxor v (fxrshift n 8)) mask)))
+
+(define (crc bs [start 0] [end (bytes-length bs)])
+  (crc-update 0 bs start end))
 
 (module+ test
   (require rackunit)
-  (check-equal? (crc-update 0 #"hello") 2694444340))
+  (check-equal? (crc #"hello") 2591144780)
+  (check-equal? (crc #"  hello " 2 7) 2591144780)
+  (check-equal?
+   (crc
+    (subbytes
+     (bytes-append
+      #"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x3a"
+      #"\x00\x00\x00\x00\x02\xff\x5e\x0a\x7f\x00\x00\x00"
+      #"\x00\x00\x00\x00\x00\x01\x7e\xe7\xeb\xbf\xcd\x00"
+      #"\x00\x01\x7e\xe7\xeb\xbf\xcd\xff\xff\xff\xff\xff"
+      #"\xff\xff\xff\xff\xff\xff\xff\xff\xff\x00\x00\x00"
+      #"\x01\x10\x00\x00\x00\x02\x61\x02\x61\x00")
+     21))
+   4284353151))

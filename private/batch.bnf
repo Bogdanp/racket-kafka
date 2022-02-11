@@ -18,7 +18,7 @@
 
 RecordBatch          = BaseOffset BatchLength PartitionLeaderEpoch Magic CRC BatchAttributes
                        LastOffsetDelta FirstTimestamp MaxTimestamp ProducerID ProducerEpoch
-                       BaseSequence;
+                       BaseSequence RecordCount;
 BaseOffset           = i64be;
 BatchLength          = i32be;
 PartitionLeaderEpoch = i32be;
@@ -38,15 +38,15 @@ Length         = varint32;
 Attributes     = i8;
 TimestampDelta = varint64;
 OffsetDelta    = varint32;
-Key            = CompactBytes;
-Value          = CompactBytes;
+Key            = BatchBytes;
+Value          = BatchBytes;
 Headers        = HeadersLen Header{HeadersLen_1};
 HeadersLen     = varint32;
 Header         = HeaderKey HeaderValue;
-HeaderKey      = CompactString;
-HeaderValue    = CompactBytes;
+HeaderKey      = BatchString;
+HeaderValue    = BatchBytes;
 
 @foreign-parsers "protocol-native.rkt"
-  {CompactBytes  un-CompactBytes}
-  {CompactString un-CompactString}
+  {BatchBytes  un-BatchBytes}
+  {BatchString un-BatchString}
   ;
