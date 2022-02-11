@@ -8,6 +8,10 @@
    [index exact-nonnegative-integer?]
    [offset exact-nonnegative-integer?]))
 
+(define-record RecordResult
+  ([topic string?]
+   [partition ProduceResponsePartition?]))
+
 (define-record ProduceResponseTopic
   ([name string?]
    [partitions (listof ProduceResponsePartition?)]))

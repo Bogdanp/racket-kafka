@@ -11,14 +11,14 @@
 (provide
  (contract-out
   [producer? (-> any/c boolean?)]
-  [make-producer (->* (connection? string?)
+  [make-producer (->* (connection?)
                       (#:acks (or/c 'none 'leader 'full)
                        #:compression (or/c 'none 'gzip)
                        #:flush-interval exact-positive-integer?
                        #:max-batch-bytes exact-positive-integer?
                        #:max-batch-size exact-positive-integer?)
                       producer?)]
-  [produce (->* (producer? bytes? bytes?)
+  [produce (->* (producer? string? bytes? bytes?)
                 (#:partition exact-nonnegative-integer?)
                 evt?)]
   [producer-flush (-> producer? void?)]
@@ -26,11 +26,12 @@
 
 (define-logger kafka-producer)
 
-(struct producer (conn topic ch batcher)
+(struct producer (conn ch batcher)
   #:transparent)
 
+;; FIXME: acks 'none needs no-response support in the serde layer.
 (define (make-producer
-         conn topic
+         conn
          #:acks [acks 'leader]
          #:compression [compression 'gzip]
          #:flush-interval [flush-interval-ms 60000]
@@ -40,10 +41,10 @@
   (define batcher
     (thread/suspend-to-kill
      (lambda ()
-       (define batches
-         (make-hasheqv))
-       (define (append! pid key value)
-         (define b (hash-ref! batches pid (λ () (make-batch #:compression compression))))
+       (define batches (make-hash))
+       (define (append! topic pid key value)
+         (define topic-batches (hash-ref! batches topic make-hasheqv))
+         (define b (hash-ref! topic-batches pid (λ () (make-batch #:compression compression))))
          (batch-append! b key value))
        (define (flush?)
          (define-values (bs sz)
@@ -62,7 +63,7 @@
                  (make-ProduceResponse #:topics null)))]
              [else
               (begin0 (make-produce-evt
-                       conn topic batches
+                       conn batches
                        #:acks acks
                        #:timeout-ms 30000)
                 (hash-clear! batches))]))
@@ -91,10 +92,10 @@
 
                   [else
                    (match msg
-                     [`(produce ,pid ,key, value ,nack ,req-ch)
-                      (append! pid key value)
+                     [`(produce ,topic ,pid ,key, value ,nack ,req-ch)
+                      (append! topic pid key value)
                       (define-values (res res-evt)
-                        (make-ProduceRes pid))
+                        (make-ProduceRes topic pid))
                       (loop
                        (add-state-pending-req
                         (add-state-req st (ProduceReq nack req-ch res-evt))
@@ -121,34 +122,45 @@
                  pending-evt
                  (lambda (res&reqs)
                    (match-define (cons res reqs) res&reqs)
-                   (define responses-by-pid
-                     (for*/hasheqv ([t (in-list (ProduceResponse-topics res))]
-                                    [p (in-list (ProduceResponseTopic-partitions t))])
+                   (define results-by-topic&pid
+                     (for*/hash ([t (in-list (ProduceResponse-topics res))]
+                                 [p (in-list (ProduceResponseTopic-partitions t))])
+                       (define topic
+                         (ProduceResponseTopic-name t))
+                       (define pid
+                         (ProduceResponsePartition-index p))
+                       (define topic&pid
+                         (cons topic pid))
                        (define error-code
                          (ProduceResponsePartition-error-code p))
                        (values
-                        (ProduceResponsePartition-index p)
+                        topic&pid
                         (if (not (zero? error-code))
                             (server-error error-code)
-                            p))))
+                            (make-RecordResult
+                             #:topic topic
+                             #:partition p)))))
                    (loop
                     (remove-state-pending-evt
                      (add-state-reqs st (for/list ([r (in-list reqs)])
                                           (cond
                                             [(ProduceRes? r)
+                                             (define topic&pid
+                                               (cons (ProduceRes-topic r)
+                                                     (ProduceRes-pid r)))
                                              (define partition-res
-                                               (hash-ref responses-by-pid (ProduceRes-pid r)))
+                                               (hash-ref results-by-topic&pid topic&pid))
                                              (struct-copy ProduceRes r [res partition-res])]
                                             [else r])))
                      pending-evt)))))
               (for/list ([r (in-list (state-reqs st))])
                 (define req-evt
                   (match r
-                    [(ProduceReq _ res-ch evt)   (channel-put-evt res-ch evt)]
-                    [(ProduceRes _ res-ch _ res) (channel-put-evt res-ch res)]
-                    [(FlushReq   _ res-ch)       (channel-put-evt res-ch (void))]
-                    [(StopReq    _ res-ch)       (channel-put-evt res-ch (void))]
-                    [(FailReq    _ res-ch err)   (channel-put-evt res-ch err)]))
+                    [(ProduceReq _ res-ch evt)     (channel-put-evt res-ch evt)]
+                    [(ProduceRes _ res-ch _ _ res) (channel-put-evt res-ch res)]
+                    [(FlushReq   _ res-ch)         (channel-put-evt res-ch (void))]
+                    [(StopReq    _ res-ch)         (channel-put-evt res-ch (void))]
+                    [(FailReq    _ res-ch err)     (channel-put-evt res-ch err)]))
                 (handle-evt
                  req-evt
                  (lambda (_)
@@ -158,10 +170,10 @@
                  (Req-nack r)
                  (lambda (_)
                    (loop (remove-state-req st r)))))))])))))
-  (producer conn topic ch batcher))
+  (producer conn ch batcher))
 
-(define (produce p key value #:partition [pid -1])
-  (sync (make-producer-evt p `(produce ,pid ,key ,value))))
+(define (produce p topic key value #:partition [pid 0])
+  (sync (make-producer-evt p `(produce ,topic ,pid ,key ,value))))
 
 (define (producer-flush p)
   (sync (make-producer-evt p `(flush))))
@@ -236,14 +248,14 @@
 
 (struct Req ([nack #:mutable] res-ch) #:transparent)
 (struct ProduceReq Req (evt) #:transparent)
-(struct ProduceRes Req (pid res) #:transparent)
+(struct ProduceRes Req (topic pid res) #:transparent)
 (struct FlushReq Req () #:transparent)
 (struct StopReq Req () #:transparent)
 (struct FailReq Req (err) #:transparent)
 
-(define (make-ProduceRes pid)
+(define (make-ProduceRes topic pid)
   (define ch (make-channel))
-  (define res (ProduceRes #f ch pid (void)))
+  (define res (ProduceRes #f ch topic pid (void)))
   (define res-evt
     (nack-guard-evt
      (lambda (nack)
@@ -272,9 +284,10 @@
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (batch-stats batches)
-  (for/fold ([bs 0]
+  (for*/fold ([bs 0]
              [sz 0])
-            ([b (in-hash-values batches)])
+             ([t (in-hash-values batches)]
+              [b (in-hash-values t)])
     (values
      (+ bs (batch-len b))
      (+ sz (batch-size b)))))
@@ -283,14 +296,17 @@
   (alarm-evt (+ (current-inexact-milliseconds) ms)))
 
 (define (make-produce-evt
-         conn topic batches
+         conn batches
          #:acks acks
          #:timeout-ms timeout-ms)
-  (define parts
-    (for/list ([(pid b) (in-hash batches)])
-      (PartitionData pid (call-with-output-bytes
-                          (lambda (out)
-                            (write-batch b out))))))
   (define data
-    (TopicData topic parts))
-  (make-Produce-evt conn (list data) acks timeout-ms))
+    (for/list ([(topic parts) (in-hash batches)])
+      (make-TopicData
+       #:name topic
+       #:partitions (for/list ([(pid b) (in-hash parts)])
+                      (make-PartitionData
+                       #:index pid
+                       #:batch (call-with-output-bytes
+                                (lambda (out)
+                                  (write-batch b out))))))))
+  (make-Produce-evt conn data acks timeout-ms))
