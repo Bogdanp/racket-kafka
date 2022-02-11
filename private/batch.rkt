@@ -95,6 +95,8 @@
   (set-batch-size! b (add1 (batch-size b))))
 
 (define (write-batch b out)
+  (close-output-port (batch-data-out b))
+
   (define buf (batch-buf b))
   (define buf-out (open-output-record-data buf))
   (reset-record-data! buf)
@@ -109,7 +111,6 @@
   (proto:un-ProducerEpoch -1 buf-out)
   (proto:un-BaseSequence -1 buf-out)
   (proto:un-RecordCount (batch-size b) buf-out)
-
 
   (define data
     (batch-data b))
@@ -152,14 +153,14 @@
        (BatchLength_1 . 67)
        (PartitionLeaderEpoch_1 . 0)
        (Magic_1 . 2)
-       (CRC_1 . 3907180471)
+       (CRC_1 . 4119354850)
        (BatchAttributes_1 . 0)
        (LastOffsetDelta_1 . 1)
        (FirstTimestamp_1 . 5)
        (MaxTimestamp_1 . 20)
-       (ProducerID_1 . 0)
-       (ProducerEpoch_1 . 0)
-       (BaseSequence_1 . 0)
+       (ProducerID_1 . -1)
+       (ProducerEpoch_1 . -1)
+       (BaseSequence_1 . -1)
        (RecordCount_1 . 2)))
     (check-equal?
      (proto:Record batch-bs-in)
@@ -227,10 +228,17 @@
   (define rd-out (open-output-record-data rd))
   (define-values (in out)
     (make-pipe))
-  (begin0 out
+  (define thd
     (thread
      (lambda ()
-       (gzip-through-ports in rd-out #f (current-seconds))))))
+       (gzip-through-ports in rd-out #f (current-seconds)))))
+  (make-output-port
+   'record-data/gzip
+   always-evt
+   out
+   (lambda ()
+     (close-output-port out)
+     (void (sync thd)))))
 
 (define (copy-record-data rd out)
   (write-bytes (record-data-bs rd) out 0 (record-data-len rd)))
