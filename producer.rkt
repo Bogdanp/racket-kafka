@@ -266,7 +266,6 @@
 (define (make-deadline-evt ms)
   (alarm-evt (+ (current-inexact-milliseconds) ms)))
 
-(require racket/pretty)
 (define (make-produce-evt
          conn topic batches
          #:acks acks
@@ -278,5 +277,4 @@
                             (write-batch b out))))))
   (define data
     (TopicData topic parts))
-  (pretty-print data)
   (make-Produce-evt conn (list data) acks timeout-ms))
