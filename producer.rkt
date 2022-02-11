@@ -55,7 +55,11 @@
            (batch-stats batches))
          (define evt
            (cond
-             [(zero? sz) always-evt]
+             [(zero? sz)
+              (handle-evt
+               always-evt
+               (lambda (_)
+                 (make-ProduceResponse #:topics null)))]
              [else
               (begin0 (make-produce-evt
                        conn topic batches
@@ -90,7 +94,7 @@
                      [`(produce ,pid ,key, value ,nack ,req-ch)
                       (append! pid key value)
                       (define-values (res res-evt)
-                        (make-ProduceRes))
+                        (make-ProduceRes pid))
                       (loop
                        (add-state-pending-req
                         (add-state-req st (ProduceReq nack req-ch res-evt))
@@ -117,22 +121,34 @@
                  pending-evt
                  (lambda (res&reqs)
                    (match-define (cons res reqs) res&reqs)
+                   (define responses-by-pid
+                     (for*/hasheqv ([t (in-list (ProduceResponse-topics res))]
+                                    [p (in-list (ProduceResponseTopic-partitions t))])
+                       (define error-code
+                         (ProduceResponsePartition-error-code p))
+                       (values
+                        (ProduceResponsePartition-index p)
+                        (if (not (zero? error-code))
+                            (server-error error-code)
+                            p))))
                    (loop
                     (remove-state-pending-evt
                      (add-state-reqs st (for/list ([r (in-list reqs)])
-                                          ;; FIXME
-                                          (if (ProduceRes? r)
-                                              (struct-copy ProduceRes r [res res])
-                                              r)))
+                                          (cond
+                                            [(ProduceRes? r)
+                                             (define partition-res
+                                               (hash-ref responses-by-pid (ProduceRes-pid r)))
+                                             (struct-copy ProduceRes r [res partition-res])]
+                                            [else r])))
                      pending-evt)))))
               (for/list ([r (in-list (state-reqs st))])
                 (define req-evt
                   (match r
-                    [(ProduceReq _ res-ch evt) (channel-put-evt res-ch evt)]
-                    [(ProduceRes _ res-ch res) (channel-put-evt res-ch res)]
-                    [(FlushReq   _ res-ch)     (channel-put-evt res-ch (void))]
-                    [(StopReq    _ res-ch)     (channel-put-evt res-ch (void))]
-                    [(FailReq    _ res-ch err) (channel-put-evt res-ch err)]))
+                    [(ProduceReq _ res-ch evt)   (channel-put-evt res-ch evt)]
+                    [(ProduceRes _ res-ch _ res) (channel-put-evt res-ch res)]
+                    [(FlushReq   _ res-ch)       (channel-put-evt res-ch (void))]
+                    [(StopReq    _ res-ch)       (channel-put-evt res-ch (void))]
+                    [(FailReq    _ res-ch err)   (channel-put-evt res-ch err)]))
                 (handle-evt
                  req-evt
                  (lambda (_)
@@ -220,14 +236,14 @@
 
 (struct Req ([nack #:mutable] res-ch) #:transparent)
 (struct ProduceReq Req (evt) #:transparent)
-(struct ProduceRes Req (res) #:transparent)
+(struct ProduceRes Req (pid res) #:transparent)
 (struct FlushReq Req () #:transparent)
 (struct StopReq Req () #:transparent)
 (struct FailReq Req (err) #:transparent)
 
-(define (make-ProduceRes)
+(define (make-ProduceRes pid)
   (define ch (make-channel))
-  (define res (ProduceRes #f ch (void)))
+  (define res (ProduceRes #f ch pid (void)))
   (define res-evt
     (nack-guard-evt
      (lambda (nack)
