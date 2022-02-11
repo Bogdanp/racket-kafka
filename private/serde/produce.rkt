@@ -28,7 +28,7 @@
    [acks 'none]
    [timeout-ms 30000])
   #:code 0
-  #:version 7
+  #:version 3
   #:response proto:ProduceResponseV3
   enc-producev3
   dec-producev2)
