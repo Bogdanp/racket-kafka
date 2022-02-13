@@ -57,7 +57,6 @@
              [(null? pending-reqs)
               (pure-evt (make-ProduceResponse #:topics null))]
              [else
-              ;; TODO: handle connection errors.
               (with-handlers ([exn:fail?
                                (lambda (err)
                                  (begin0 (pure-evt err)
