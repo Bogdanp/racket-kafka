@@ -52,23 +52,22 @@
          (or (> bs max-batch-len)
              (> sz max-batch-size)))
        (define (make-flush-evt pending-reqs)
-         (define-values (_bs sz)
-           (batch-stats batches))
          (define evt
            (cond
-             [(zero? sz)
-              (handle-evt
-               always-evt
-               (lambda (_)
-                 (make-ProduceResponse #:topics null)))]
+             [(null? pending-reqs)
+              (pure-evt (make-ProduceResponse #:topics null))]
              [else
               ;; TODO: handle connection errors.
-              (define conn (get-connection client))
-              (begin0 (make-produce-evt
-                       conn batches
-                       #:acks acks
-                       #:timeout-ms 30000)
-                (hash-clear! batches))]))
+              (with-handlers ([exn:fail?
+                               (lambda (err)
+                                 (begin0 (pure-evt err)
+                                   (hash-clear! batches)))])
+                (define conn (get-connection client))
+                (begin0 (make-produce-evt
+                         conn batches
+                         #:acks acks
+                         #:timeout-ms 30000)
+                  (hash-clear! batches)))]))
          (handle-evt evt (λ (res) (cons res pending-reqs))))
        (let loop ([st (make-state (make-deadline-evt flush-interval-ms))])
          (cond
@@ -122,39 +121,48 @@
               (for/list ([pending-evt (in-list (state-pending-evts st))])
                 (handle-evt
                  pending-evt
-                 (lambda (res&reqs)
-                   (match-define (cons res reqs) res&reqs)
-                   (define results-by-topic&pid
-                     (for*/hash ([t (in-list (ProduceResponse-topics res))]
-                                 [p (in-list (ProduceResponseTopic-partitions t))])
-                       (define topic
-                         (ProduceResponseTopic-name t))
-                       (define pid
-                         (ProduceResponsePartition-index p))
-                       (define topic&pid
-                         (cons topic pid))
-                       (define error-code
-                         (ProduceResponsePartition-error-code p))
-                       (values
-                        topic&pid
-                        (if (not (zero? error-code))
-                            (server-error error-code)
-                            (make-RecordResult
-                             #:topic topic
-                             #:partition p)))))
-                   (loop
-                    (remove-state-pending-evt
-                     (add-state-reqs st (for/list ([r (in-list reqs)])
-                                          (cond
-                                            [(ProduceRes? r)
-                                             (define topic&pid
-                                               (cons (ProduceRes-topic r)
-                                                     (ProduceRes-pid r)))
-                                             (define partition-res
-                                               (hash-ref results-by-topic&pid topic&pid))
-                                             (struct-copy ProduceRes r [res partition-res])]
-                                            [else r])))
-                     pending-evt)))))
+                 (match-lambda
+                   [(cons (? exn:fail? err) reqs)
+                    (loop
+                     (remove-state-pending-evt
+                      (add-state-reqs st (for/list ([r (in-list reqs)])
+                                           (if (ProduceRes? r)
+                                               (struct-copy ProduceRes r [res err])
+                                               r)))
+                      pending-evt))]
+
+                   [(cons res reqs)
+                    (define results-by-topic&pid
+                      (for*/hash ([t (in-list (ProduceResponse-topics res))]
+                                  [p (in-list (ProduceResponseTopic-partitions t))])
+                        (define topic
+                          (ProduceResponseTopic-name t))
+                        (define pid
+                          (ProduceResponsePartition-index p))
+                        (define topic&pid
+                          (cons topic pid))
+                        (define error-code
+                          (ProduceResponsePartition-error-code p))
+                        (values
+                         topic&pid
+                         (if (not (zero? error-code))
+                             (server-error error-code)
+                             (make-RecordResult
+                              #:topic topic
+                              #:partition p)))))
+                    (loop
+                     (remove-state-pending-evt
+                      (add-state-reqs st (for/list ([r (in-list reqs)])
+                                           (cond
+                                             [(ProduceRes? r)
+                                              (define topic&pid
+                                                (cons (ProduceRes-topic r)
+                                                      (ProduceRes-pid r)))
+                                              (define partition-res
+                                                (hash-ref results-by-topic&pid topic&pid))
+                                              (struct-copy ProduceRes r [res partition-res])]
+                                             [else r])))
+                      pending-evt))])))
               (for/list ([r (in-list (state-reqs st))])
                 (define req-evt
                   (match r
@@ -193,13 +201,13 @@
       (thread-resume thd)
       (begin0 res-ch
         (channel-put ch (append msg `(,nack ,res-ch))))))
-   maybe-raise))
+   (lambda (res-or-exn)
+     (begin0 res-or-exn
+       (when (exn:fail? res-or-exn)
+         (raise res-or-exn))))))
 
-(define (maybe-raise res-or-exn)
-  (cond
-    [(exn:fail? res-or-exn) (raise res-or-exn)]
-    [(evt? res-or-exn) (handle-evt res-or-exn maybe-raise)]
-    [else res-or-exn]))
+(define (pure-evt v)
+  (handle-evt always-evt (λ (_) v)))
 
 
 ;; State ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -262,10 +270,15 @@
   (define ch (make-channel))
   (define res (ProduceRes #f ch topic pid (void)))
   (define res-evt
-    (nack-guard-evt
-     (lambda (nack)
-       (begin0 ch
-         (set-Req-nack! res nack)))))
+    (handle-evt
+     (nack-guard-evt
+      (lambda (nack)
+        (begin0 ch
+          (set-Req-nack! res nack))))
+     (lambda (res-or-exn)
+       (begin0 res-or-exn
+         (when (exn:fail? res-or-exn)
+           (raise res-or-exn))))))
   (will-register
    executor res-evt
    (λ (_) (set-Req-nack! res always-evt)))
