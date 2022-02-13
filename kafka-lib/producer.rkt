@@ -108,7 +108,7 @@
                       (loop (state-force-flush (add-state-pending-req st (FlushReq nack res-ch))))]
 
                      [msg
-                      (log-kafka-producer-error "invalid message ~e" msg)
+                      (log-kafka-producer-error "invalid message: ~e" msg)
                       (loop st)])])))
              (handle-evt
               (state-deadline-evt st)
@@ -191,10 +191,13 @@
       (thread-resume thd)
       (begin0 res-ch
         (channel-put ch (append msg `(,nack ,res-ch))))))
-   (lambda (res-or-exn)
-     (begin0 res-or-exn
-       (when (exn:fail? res-or-exn)
-         (raise res-or-exn))))))
+   maybe-raise))
+
+(define (maybe-raise res-or-exn)
+  (cond
+    [(exn:fail? res-or-exn) (raise res-or-exn)]
+    [(evt? res-or-exn) (handle-evt res-or-exn maybe-raise)]
+    [else res-or-exn]))
 
 
 ;; State ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
