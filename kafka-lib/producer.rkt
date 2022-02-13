@@ -52,22 +52,25 @@
          (or (> bs max-batch-len)
              (> sz max-batch-size)))
        (define (make-flush-evt pending-reqs)
+         (define-values (_bs sz)
+           (batch-stats batches))
+         ; (evt/c (cons/c (or/c exn? ProduceResponse?) (listof Req?)))
          (define evt
-           (cond
-             [(null? pending-reqs)
-              (pure-evt (make-ProduceResponse #:topics null))]
-             [else
-              (with-handlers ([exn:fail?
-                               (lambda (err)
-                                 (begin0 (pure-evt err)
-                                   (hash-clear! batches)))])
-                (define conn (get-connection client))
-                (begin0 (make-produce-evt
-                         conn batches
-                         #:acks acks
-                         #:timeout-ms 30000)
-                  (hash-clear! batches)))]))
-         (handle-evt evt (λ (res) (cons res pending-reqs))))
+           (handle-evt
+            ; (evt/c (or/c exn? ProduceResponse?))
+            (if (zero? sz)
+                (pure-evt (make-ProduceResponse #:topics null))
+                (with-handlers ([exn:fail? pure-evt])
+                  (define conn
+                    (get-connection client))
+                  (make-produce-evt
+                   conn batches
+                   #:acks acks
+                   #:timeout-ms 30000)))
+            (lambda (res)
+              (cons res pending-reqs))))
+         (begin0 evt
+           (hash-clear! batches)))
        (let loop ([st (make-state (make-deadline-evt flush-interval-ms))])
          (cond
            [(or (state-force-flush? st) (flush?))
@@ -302,7 +305,7 @@
 
 (define (batch-stats batches)
   (for*/fold ([bs 0]
-             [sz 0])
+              [sz 0])
              ([t (in-hash-values batches)]
               [b (in-hash-values t)])
     (values
