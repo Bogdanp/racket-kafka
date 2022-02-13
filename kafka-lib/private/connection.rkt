@@ -14,6 +14,7 @@
  current-client-id
  connection?
  connect
+ connected?
  disconnect
  make-request-evt
  get-requests-in-flight)
@@ -25,7 +26,7 @@
 
 (define (connect [host "127.0.0.1"]
                  [port 9092]
-                 #:ssl [ssl-ctx #f])
+                 [ssl-ctx #f])
   (define-values (in out)
     (if ssl-ctx
         (ssl-connect host port ssl-ctx)
@@ -35,6 +36,10 @@
   (define conn (connection ch mgr (hasheqv)))
   (begin0 conn
     (set-connection-versions! conn (get-api-versions conn))))
+
+(define (connected? conn)
+  (and (not (thread-dead? (connection-mgr conn)))
+       (sync (make-message-evt conn `(connected?)))))
 
 (define (disconnect conn)
   (define mgr (connection-mgr conn))
@@ -48,6 +53,13 @@
 
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(provide
+ log-kafka-debug
+ log-kafka-info
+ log-kafka-warning
+ log-kafka-error
+ log-kafka-fatal)
 
 (define-logger kafka)
 
@@ -104,6 +116,10 @@
            (close-input-port in)
            (close-output-port out)
            (log-kafka-debug "client ~a disconnected" client-id)]
+
+          [`(connected? ,nack ,ch)
+           (define req (Req nack ch (state-connected? s)))
+           (loop (add-state-req s req))]
 
           [`(requests-in-flight ,nack ,ch)
            (define req (Req nack ch (state-req-count s)))

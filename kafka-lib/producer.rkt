@@ -4,14 +4,14 @@
          racket/match
          racket/port
          "private/batch.rkt"
-         "private/connection.rkt"
+         "private/client.rkt"
          "private/error.rkt"
          "private/serde.rkt")
 
 (provide
  (contract-out
   [producer? (-> any/c boolean?)]
-  [make-producer (->* (connection?)
+  [make-producer (->* (client?)
                       (#:acks (or/c 'none 'leader 'full)
                        #:compression (or/c 'none 'gzip)
                        #:flush-interval exact-positive-integer?
@@ -26,12 +26,12 @@
 
 (define-logger kafka-producer)
 
-(struct producer (conn ch batcher)
+(struct producer (client ch batcher)
   #:transparent)
 
 ;; FIXME: acks 'none needs no-response support in the serde layer.
 (define (make-producer
-         conn
+         client
          #:acks [acks 'leader]
          #:compression [compression 'gzip]
          #:flush-interval [flush-interval-ms 60000]
@@ -43,8 +43,8 @@
      (lambda ()
        (define batches (make-hash))
        (define (append! topic pid key value)
-         (define topic-batches (hash-ref! batches topic make-hasheqv))
-         (define b (hash-ref! topic-batches pid (λ () (make-batch #:compression compression))))
+         (define t (hash-ref! batches topic make-hasheqv))
+         (define b (hash-ref! t pid (λ () (make-batch #:compression compression))))
          (batch-append! b key value))
        (define (flush?)
          (define-values (bs sz)
@@ -62,6 +62,8 @@
                (lambda (_)
                  (make-ProduceResponse #:topics null)))]
              [else
+              ;; TODO: handle connection errors.
+              (define conn (get-connection client))
               (begin0 (make-produce-evt
                        conn batches
                        #:acks acks
@@ -170,7 +172,7 @@
                  (Req-nack r)
                  (lambda (_)
                    (loop (remove-state-req st r)))))))])))))
-  (producer conn ch batcher))
+  (producer client ch batcher))
 
 (define (produce p topic key value #:partition [pid 0])
   (sync (make-producer-evt p `(produce ,topic ,pid ,key ,value))))

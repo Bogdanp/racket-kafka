@@ -4,10 +4,10 @@
          kafka/producer
          racket/random)
 
-(define conn (connect))
-(define p (make-producer conn))
+(define c (make-client))
+(define p (make-producer c))
 (create-topics
- conn
+ c
  (make-CreateTopic
   #:name "foo"
   #:partitions 8)
@@ -23,3 +23,4 @@
 (producer-flush p)
 (for ([evt (in-list evts)])
   (println (sync evt)))
+(disconnect-all c)

@@ -3,6 +3,7 @@
 (require openssl
          racket/contract
          sasl
+         "private/client.rkt"
          "private/connection.rkt"
          "private/error.rkt"
          "private/serde.rkt")
@@ -15,57 +16,29 @@
   [exn:fail:kafka:server? (-> any/c boolean?)]
   [exn:fail:kafka:server-code (-> exn:fail:kafka:server? exact-integer?)]
   [current-client-id (parameter/c string?)]
-  [connection? (-> any/c boolean?)]
-  [connect (->* ()
-                (string?
-                 (integer-in 0 65535)
-                 #:ssl ssl-client-context?)
-                connection?)]
-  [disconnect (-> connection? void)]
-  [get-metadata (-> connection? string? ... Metadata?)]
-  [create-topics (-> connection? CreateTopic? CreateTopic? ... CreatedTopics?)]
-  [delete-topics (-> connection? string? string? ... DeletedTopics?)]
-  [authenticate (-> connection? symbol? (or/c sasl-ctx? bytes? string?) void?)]))
-
-
-;; common ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (authenticate conn mechanism ctx)
-  (sync (make-SaslHandshake-evt conn mechanism))
-  (case mechanism
-    [(plain)
-     (define req
-       (if (string? ctx)
-           (string->bytes/utf-8 ctx)
-           ctx))
-     (sync (make-SaslAuthenticate-evt conn req))]
-    [else
-     (let loop ()
-       (case (sasl-state ctx)
-         [(done)
-          (void)]
-         [(error)
-          (error 'authenticate "SASL: unexpected error")]
-         [(receive)
-          (error 'authenticate "SASL: receive not supported")]
-         [(send/receive)
-          (define req (sasl-next-message ctx))
-          (define res (sync (make-SaslAuthenticate-evt conn req)))
-          (sasl-receive-message ctx (SaslAuthenticateResponse-data res))
-          (loop)]
-         [(send/done)
-          (define req (sasl-next-message ctx))
-          (sync (make-SaslAuthenticate-evt conn req))]))])
-  (void))
+  [client? (-> any/c boolean?)]
+  [make-client (->* ()
+                    (#:bootstrap-host string?
+                     #:bootstrap-port (integer-in 0 65535)
+                     #:sasl-mechanism&ctx (or/c
+                                           #f
+                                           (list/c 'plain string?)
+                                           (list/c symbol? sasl-ctx?))
+                     #:ssl-ctx (or/c #f ssl-client-context?))
+                    client?)]
+  [disconnect-all (-> client? void?)]
+  [get-metadata (-> client? string? ... Metadata?)]
+  [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
+  [delete-topics (-> client? string? string? ... DeletedTopics?)]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (get-metadata conn . topics)
-  (sync (make-Metadata-evt conn topics)))
+(define (get-metadata c . topics)
+  (sync (make-Metadata-evt (get-connection c) topics)))
 
-(define (create-topics conn topic0 . topics)
-  (sync (make-CreateTopics-evt conn (cons topic0 topics))))
+(define (create-topics c topic0 . topics)
+  (sync (make-CreateTopics-evt (get-connection c) (cons topic0 topics))))
 
-(define (delete-topics conn topic0 . topics)
-  (sync (make-DeleteTopics-evt conn (cons topic0 topics))))
+(define (delete-topics c topic0 . topics)
+  (sync (make-DeleteTopics-evt (get-connection c) (cons topic0 topics))))
