@@ -51,10 +51,10 @@
            (batch-stats batches))
          (or (> bs max-batch-len)
              (> sz max-batch-size)))
+       ; (listof Req?) -> (evt/c (cons/c (or/c exn? ProduceResponse?) (listof Req?)))
        (define (make-flush-evt pending-reqs)
          (define-values (_bs sz)
            (batch-stats batches))
-         ; (evt/c (cons/c (or/c exn? ProduceResponse?) (listof Req?)))
          (define evt
            (handle-evt
             ; (evt/c (or/c exn? ProduceResponse?))
@@ -78,9 +78,46 @@
               (pop-state-pending-reqs st))
             (define flush-evt
               (make-flush-evt pending-reqs))
+            (define ready-reqs
+              (match (sync flush-evt)
+                [(cons (? exn:fail? err) reqs)
+                 (for/list ([r (in-list reqs)])
+                   (if (ProduceRes? r)
+                       (struct-copy ProduceRes r [res err])
+                       r))]
+
+                [(cons res reqs)
+                 (define results-by-topic&pid
+                   (for*/hash ([t (in-list (ProduceResponse-topics res))]
+                               [p (in-list (ProduceResponseTopic-partitions t))])
+                     (define topic
+                       (ProduceResponseTopic-name t))
+                     (define pid
+                       (ProduceResponsePartition-index p))
+                     (define topic&pid
+                       (cons topic pid))
+                     (define error-code
+                       (ProduceResponsePartition-error-code p))
+                     (values
+                      topic&pid
+                      (if (not (zero? error-code))
+                          (server-error error-code)
+                          (make-RecordResult
+                           #:topic topic
+                           #:partition p)))))
+                 (for/list ([r (in-list reqs)])
+                   (cond
+                     [(ProduceRes? r)
+                      (define topic&pid
+                        (cons (ProduceRes-topic r)
+                              (ProduceRes-pid r)))
+                      (define partition-res
+                        (hash-ref results-by-topic&pid topic&pid))
+                      (struct-copy ProduceRes r [res partition-res])]
+                     [else r]))]))
             (loop
              (state-unforce-flush
-              (add-state-pending-evt next-st flush-evt)))]
+              (add-state-reqs next-st ready-reqs)))]
 
            [else
             (apply
@@ -120,51 +157,6 @@
                  (state-force-flush
                   (set-state-deadline st (make-deadline-evt flush-interval-ms))))))
              (append
-              (for/list ([pending-evt (in-list (state-pending-evts st))])
-                (handle-evt
-                 pending-evt
-                 (match-lambda
-                   [(cons (? exn:fail? err) reqs)
-                    (loop
-                     (remove-state-pending-evt
-                      (add-state-reqs st (for/list ([r (in-list reqs)])
-                                           (if (ProduceRes? r)
-                                               (struct-copy ProduceRes r [res err])
-                                               r)))
-                      pending-evt))]
-
-                   [(cons res reqs)
-                    (define results-by-topic&pid
-                      (for*/hash ([t (in-list (ProduceResponse-topics res))]
-                                  [p (in-list (ProduceResponseTopic-partitions t))])
-                        (define topic
-                          (ProduceResponseTopic-name t))
-                        (define pid
-                          (ProduceResponsePartition-index p))
-                        (define topic&pid
-                          (cons topic pid))
-                        (define error-code
-                          (ProduceResponsePartition-error-code p))
-                        (values
-                         topic&pid
-                         (if (not (zero? error-code))
-                             (server-error error-code)
-                             (make-RecordResult
-                              #:topic topic
-                              #:partition p)))))
-                    (loop
-                     (remove-state-pending-evt
-                      (add-state-reqs st (for/list ([r (in-list reqs)])
-                                           (cond
-                                             [(ProduceRes? r)
-                                              (define topic&pid
-                                                (cons (ProduceRes-topic r)
-                                                      (ProduceRes-pid r)))
-                                              (define partition-res
-                                                (hash-ref results-by-topic&pid topic&pid))
-                                              (struct-copy ProduceRes r [res partition-res])]
-                                             [else r])))
-                      pending-evt))])))
               (for/list ([r (in-list (state-reqs st))])
                 (define req-evt
                   (match r
@@ -215,25 +207,18 @@
 ;; State ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (struct state
-  (deadline-evt
-   stopped?
-   pending-evts
+  (stopped?
+   force-flush?
+   deadline-evt
    pending-reqs
-   reqs
-   force-flush?)
+   reqs)
   #:transparent)
 
 (define (make-state deadline-evt)
-  (state deadline-evt #f null null null #f))
+  (state #f #f deadline-evt null null))
 
 (define (set-state-deadline st deadline-evt)
   (struct-copy state st [deadline-evt deadline-evt]))
-
-(define (add-state-pending-evt st evt)
-  (struct-copy state st [pending-evts (cons evt (state-pending-evts st))]))
-
-(define (remove-state-pending-evt st evt)
-  (struct-copy state st [pending-evts (remq evt (state-pending-evts st))]))
 
 (define (add-state-pending-req st req)
   (struct-copy state st [pending-reqs (cons req (state-pending-reqs st))]))

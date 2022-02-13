@@ -15,7 +15,7 @@
   #:name "bar"
   #:partitions 8))
 (define evts
-  (for/list ([i (in-range 8)])
+  (for/list ([i (in-range 1024)])
     (define pid (modulo i 8))
     (define topic (random-ref '("foo" "bar")))
     (produce p topic #"a" #"abcde" #:partition pid)))
