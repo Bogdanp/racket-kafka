@@ -26,7 +26,7 @@
 
 (define-logger kafka-producer)
 
-(struct producer (client ch batcher)
+(struct producer (ch batcher)
   #:transparent)
 
 (define (make-producer
@@ -179,7 +179,7 @@
                  (Req-nack r)
                  (lambda (_)
                    (loop (remove-state-req st r)))))))])))))
-  (producer client ch batcher))
+  (producer ch batcher))
 
 (define (produce p topic key value #:partition [pid 0])
   (sync (make-producer-evt p `(produce ,topic ,pid ,key ,value))))
