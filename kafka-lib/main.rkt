@@ -29,7 +29,8 @@
   [disconnect-all (-> client? void?)]
   [get-metadata (-> client? string? ... Metadata?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
-  [delete-topics (-> client? string? string? ... DeletedTopics?)]))
+  [delete-topics (-> client? string? string? ... DeletedTopics?)]
+  [list-groups (-> client? (listof Group?))]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -42,3 +43,6 @@
 
 (define (delete-topics c topic0 . topics)
   (sync (make-DeleteTopics-evt (get-connection c) (cons topic0 topics))))
+
+(define (list-groups c)
+  (sync (make-ListGroups-evt (get-connection c))))

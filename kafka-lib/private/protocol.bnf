@@ -121,6 +121,14 @@ HeartbeatResponseV3 = HeartbeatResponseV1;
 HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
 
 
+## ListGroups (code 16)
+
+ListGroupsResponseV0 = ErrorCode Groups;
+Groups               = ArrayLen Group{ArrayLen_1};
+Group                = GroupID ProtocolType;
+ProtocolType         = String;
+
+
 ## SaslHandshake (code 17)
 
 SaslHandshakeRequestV0 = SaslHandshakeMechanism;
