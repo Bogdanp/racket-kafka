@@ -1,10 +1,7 @@
 #lang racket/base
 
-(require "core.rkt")
-
-(define-record Group
-  ([name string?]
-   [protocol-type string?]))
+(require "core.rkt"
+         "group.rkt")
 
 (define-request ListGroups ()
   #:code 16
@@ -12,7 +9,7 @@
   #:response proto:ListGroupsResponseV0
   (lambda () #"")
   (lambda (res)
-    (for/list ([g (in-list (ref 'Group_1 'Groups_1 res))])
-      (Group
-       (ref 'GroupID_1 g)
-       (ref 'ProtocolType_1 g)))))
+    (for/list ([g (in-list (ref 'ListGroupsGroupV0_1 res))])
+      (make-Group
+       #:id (ref 'GroupID_1 g)
+       #:protocol-type (ref 'ProtocolType_1 g)))))

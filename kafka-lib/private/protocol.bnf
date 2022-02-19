@@ -121,12 +121,36 @@ HeartbeatResponseV3 = HeartbeatResponseV1;
 HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
 
 
+## DescribeGroups (code 15)
+
+DescribeGroupsRequestV0     = ArrayLen GroupID{ArrayLen_1};
+DescribeGroupsRequestV1     = DescribeGroupsRequestV0;
+DescribeGroupsRequestV2     = DescribeGroupsRequestV0;
+DescribeGroupsRequestV3     = ArrayLen GroupID{ArrayLen_1} IncludeAuthorizedOperations;
+IncludeAuthorizedOperations = u8;
+DescribeGroupsRequestV4     = DescribeGroupsRequestV3;
+DescribeGroupsRequestV5     = ArrayLen CompactGroupID{ArrayLen_1} IncludeAuthorizedOperations Tags;
+
+DescribeGroupsResponseV0 = ArrayLen DescribeGroupsGroupV0{ArrayLen_1};
+DescribeGroupsGroupV0    = ErrorCode GroupID GroupState ProtocolType ProtocolData ArrayLen DescribeGroupsMemberV0{ArrayLen_1};
+GroupState               = String;
+ProtocolType             = String;
+ProtocolData             = String;
+DescribeGroupsMemberV0   = MemberID ClientID ClientHost MemberMetadata MemberAssignment;
+ClientHost               = String;
+MemberMetadata           = Bytes;
+MemberAssignment         = Bytes;
+
+DescribeGroupsResponseV1 = ThrottleTimeMs ArrayLen DescribeGroupsGroupV0{ArrayLen_1};
+DescribeGroupsResponseV2 = DescribeGroupsResponseV1;
+DescribeGroupsResponseV3 = ThrottleTimeMs ArrayLen DescribeGroupsGroupV3{ArrayLen_1};
+DescribeGroupsGroupV3    = ErrorCode GroupID GroupState ProtocolType ProtocolData ArrayLen DescribeGroupsMemberV0{ArrayLen_1} AuthorizedOperations;
+AuthorizedOperations     = i32be;
+
 ## ListGroups (code 16)
 
-ListGroupsResponseV0 = ErrorCode Groups;
-Groups               = ArrayLen Group{ArrayLen_1};
-Group                = GroupID ProtocolType;
-ProtocolType         = String;
+ListGroupsResponseV0 = ErrorCode ArrayLen ListGroupsGroupV0{ArrayLen_1};
+ListGroupsGroupV0    = GroupID ProtocolType;
 
 
 ## SaslHandshake (code 17)

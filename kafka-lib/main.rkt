@@ -30,6 +30,7 @@
   [get-metadata (-> client? string? ... Metadata?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
+  [describe-groups (-> client? string? ... (listof Group?))]
   [list-groups (-> client? (listof Group?))]))
 
 
@@ -43,6 +44,9 @@
 
 (define (delete-topics c topic0 . topics)
   (sync (make-DeleteTopics-evt (get-connection c) (cons topic0 topics))))
+
+(define (describe-groups c . groups)
+  (sync (make-DescribeGroups-evt (get-connection c) groups)))
 
 (define (list-groups c)
   (sync (make-ListGroups-evt (get-connection c))))

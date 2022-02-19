@@ -10,6 +10,8 @@
  "serde/heartbeat.rkt"
  "serde/create-topics.rkt"
  "serde/delete-topics.rkt"
+ "serde/describe-groups.rkt"
+ "serde/group.rkt"
  "serde/list-groups.rkt"
  "serde/produce.rkt"
  "serde/sasl-authenticate.rkt"
