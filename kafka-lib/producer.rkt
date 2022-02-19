@@ -197,9 +197,11 @@
   (handle-evt
    (nack-guard-evt
     (lambda (nack)
-      (thread-resume thd)
+      (thread-resume thd (current-thread))
       (begin0 res-ch
-        (channel-put ch (append msg `(,nack ,res-ch))))))
+        (sync
+         (thread-dead-evt thd)
+         (channel-put-evt ch (append msg `(,nack ,res-ch)))))))
    (lambda (res-or-exn)
      (begin0 res-or-exn
        (when (exn:fail? res-or-exn)

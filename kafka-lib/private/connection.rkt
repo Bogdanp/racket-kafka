@@ -38,15 +38,22 @@
     (set-connection-versions! conn (get-api-versions conn))))
 
 (define (connected? conn)
-  (and (not (thread-dead? (connection-mgr conn)))
-       (sync (make-message-evt conn `(connected?)))))
+  (sync
+   (make-message-evt conn `(connected?))
+   (handle-evt
+    (thread-dead-evt (connection-mgr conn))
+    (lambda (_) #f))))
 
 (define (disconnect conn)
+  (define ch (connection-ch conn))
   (define mgr (connection-mgr conn))
-  (unless (thread-dead? mgr)
-    (thread-resume mgr)
-    (channel-put (connection-ch conn) `(disconnect))
-    (void (sync mgr))))
+  (thread-resume mgr (current-thread))
+  (void
+   (sync
+    (thread-dead-evt mgr)
+    (handle-evt
+     (channel-put-evt ch `(disconnect))
+     (λ (_) mgr)))))
 
 (define (get-requests-in-flight conn)
   (sync (make-message-evt conn '(requests-in-flight))))
@@ -65,7 +72,6 @@
 
 (define (read-port amount in)
   (define bs (read-bytes amount in))
-  (log-kafka-debug "response bytes: ~s" bs)
   (when (eof-object? bs)
     (raise
      (exn:fail:network
@@ -131,8 +137,11 @@
                             (lambda (err)
                               (define req (Req nack ch err))
                               (loop (add-state-req s req)))])
-             (define maybe-res (and immed-response (KRes immed-response (hasheqv))))
-             (define req (KReq nack ch maybe-res flexible? parser))
+             (define res
+               (if immed-response
+                   (KRes immed-response (hasheqv))
+                   missing))
+             (define req (KReq nack ch res flexible? parser))
              (define header-data
                (with-output-bytes
                  ((if flexible?
@@ -161,7 +170,8 @@
            (log-kafka-error "invalid message: ~e" msg)
            (loop s)])))
      (append
-      (for/list ([(id r) (in-hash (state-reqs s))] #:when (Req-res r))
+      (for/list ([(id r) (in-hash (state-reqs s))]
+                 #:unless (missing? (Req-res r)))
         (handle-evt
          (channel-put-evt (Req-ch r) (Req-res r))
          (lambda (_)
@@ -189,11 +199,13 @@
   (handle-evt
    (nack-guard-evt
     (lambda (nack)
-      (thread-resume mgr)
+      (thread-resume mgr (current-thread))
       (begin0 ch
-        (channel-put
-         (connection-ch conn)
-         (append msg `(,nack ,ch))))))
+        (sync
+         (thread-dead-evt mgr)
+         (channel-put-evt
+          (connection-ch conn)
+          (append msg `(,nack ,ch)))))))
    (lambda (res-or-exn)
      (begin0 res-or-exn
        (when (exn:fail? res-or-exn)
@@ -235,6 +247,12 @@
 
 (define (set-state-disconnected s)
   (struct-copy state s [connected? #f]))
+
+(define missing
+  (gensym 'missing))
+
+(define (missing? v)
+  (eq? v missing))
 
 
 ;; version ranges ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
