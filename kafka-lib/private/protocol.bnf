@@ -95,6 +95,23 @@ Replica            = i32be;
 ISR                = i32be;
 
 
+## FindCoordinator (code 10)
+
+FindCoordinatorRequestV0  = CoordinatorKey;
+CoordinatorKey            = String;
+FindCoordinatorRequestV1  = CoordinatorKey CoordinatorKeyType;
+CoordinatorKeyType        = i8;
+FindCoordinatorRequestV2  = FindCoordinatorRequestV1;
+FindCoordinatorRequestV3  = CompactCoordinatorKey CoordinatorKeyType Tags;
+CompactCoordinatorKey     = CompactString;
+
+FindCoordinatorResponseV0 = ErrorCode NodeID Host Port;
+FindCoordinatorResponseV1 = ThrottleTimeMs ErrorCode ErrorMessage NodeID Host Port;
+FindCoordinatorResponseV2 = FindCoordinatorResponseV1;
+FindCoordinatorResponseV3 = ThrottleTimeMs ErrorCode CompactErrorMessage NodeID CompactHost Port;
+CompactHost               = CompactString;
+
+
 ## Heartbeat (code 12)
 
 HeartbeatRequestV0 = GroupID GenerationID MemberID;
