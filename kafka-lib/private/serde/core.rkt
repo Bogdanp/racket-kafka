@@ -83,13 +83,15 @@
               encoder:expr
               decoder:expr} ...+)
      #:with make-evt-id (format-id #'id "make-~a-evt" #'id)
-     #:with version-rng-id (format-id #'id "~a-supported-versions" #'id)
+     #:with version-rng-id (format-id #'id "supported-~a-versions" #'id)
      #:with version-rng (let ([versions (map syntax->datum (syntax-e #'(version-num ...)))])
                           (with-syntax ([min-v (apply min versions)]
                                         [max-v (apply max versions)])
                             #'(version-range min-v max-v)))
      #'(begin
-         (provide make-evt-id)
+         (provide
+          make-evt-id
+          version-rng-id)
          (define version-rng-id version-rng)
          (define (make-evt conn immed-response flexible? v data parser-proc proc)
            (handle-evt
