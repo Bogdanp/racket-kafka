@@ -29,7 +29,6 @@
 (struct producer (client ch batcher)
   #:transparent)
 
-;; FIXME: acks 'none needs no-response support in the serde layer.
 (define (make-producer
          client
          #:acks [acks 'leader]
@@ -112,7 +111,13 @@
                         (cons (ProduceRes-topic r)
                               (ProduceRes-pid r)))
                       (define partition-res
-                        (hash-ref results-by-topic&pid topic&pid))
+                        (hash-ref results-by-topic&pid topic&pid (λ ()
+                                                                   (make-RecordResult
+                                                                    #:topic (ProduceRes-topic r)
+                                                                    #:partition (make-ProduceResponsePartition
+                                                                                 #:error-code 0
+                                                                                 #:index (ProduceRes-pid r)
+                                                                                 #:offset -1)))))
                       (struct-copy ProduceRes r [res partition-res])]
                      [else r]))]))
             (loop

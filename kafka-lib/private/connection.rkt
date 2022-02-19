@@ -125,13 +125,14 @@
            (define req (Req nack ch (state-req-count s)))
            (loop (add-state-req s req))]
 
-          [`(request ,flexible? ,k ,v ,tags ,request-data ,parser ,nack ,ch)
+          [`(request ,immed-response ,flexible? ,k ,v ,tags ,request-data ,parser ,nack ,ch)
            #:when (state-connected? s)
            (with-handlers ([exn:fail?
                             (lambda (err)
                               (define req (Req nack ch err))
                               (loop (add-state-req s req)))])
-             (define req (KReq nack ch #f flexible? parser))
+             (define maybe-res (and immed-response (KRes immed-response (hasheqv))))
+             (define req (KReq nack ch maybe-res flexible? parser))
              (define header-data
                (with-output-bytes
                  ((if flexible?
@@ -151,7 +152,7 @@
              (flush-output out)
              (loop (add-state-req s req)))]
 
-          [`(request ,_ ,_ ,_ ,_ ,_ ,_ ,nack ,ch)
+          [`(request ,_ ,_ ,_ ,_ ,_ ,_ ,_ ,nack ,ch)
            (define err (client-error "not connected"))
            (define req (Req nack ch err))
            (loop (add-state-req s req))]
@@ -177,8 +178,9 @@
                           #:tags [tags (hasheqv)]
                           #:parser parser
                           #:data [data #""]
-                          #:flexible? [flexible? #f])
-  (define msg `(request ,flexible? ,key ,v ,tags ,data ,parser))
+                          #:flexible? [flexible? #f]
+                          #:immed-response [immed-response #f])
+  (define msg `(request ,immed-response ,flexible? ,key ,v ,tags ,data ,parser))
   (handle-evt (make-message-evt conn msg) KRes-data))
 
 (define (make-message-evt conn msg)

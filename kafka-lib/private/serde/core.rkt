@@ -79,6 +79,7 @@
         {~seq #:version version-num:number
               {~optional {~seq #:flexible flexible}}
               #:response parser:expr
+              {~optional {~seq #:immed-response immed-response-expr}}
               encoder:expr
               decoder:expr} ...+)
      #:with make-evt-id (format-id #'id "make-~a-evt" #'id)
@@ -90,7 +91,7 @@
      #'(begin
          (provide make-evt-id)
          (define version-rng-id version-rng)
-         (define (make-evt conn flexible? v data parser-proc proc)
+         (define (make-evt conn immed-response flexible? v data parser-proc proc)
            (handle-evt
             (make-request-evt
              conn
@@ -98,13 +99,25 @@
              #:version v
              #:data data
              #:parser parser-proc
-             #:flexible? flexible?)
+             #:flexible? flexible?
+             #:immed-response immed-response)
             (lambda (res)
-              (define err-code (or (opt 'ErrorCode_1 res) 0))
-              (unless (zero? err-code)
-                (raise-server-error err-code))
-              (proc res))))
+              (cond
+                [immed-response res]
+                [else
+                 (define err-code (or (opt 'ErrorCode_1 res) 0))
+                 (unless (zero? err-code)
+                   (raise-server-error err-code))
+                 (proc res)]))))
          (define (make-evt-id conn arg ...)
            (case (find-best-version conn key version-rng-id)
-             [(version-num) (make-evt conn {~? flexible #f} version-num (encoder arg.id ...) parser decoder)] ...
+             [(version-num)
+              (make-evt
+               conn
+               {~? (immed-response-expr arg.id ...) #f}
+               {~? flexible #f}
+               version-num
+               (encoder arg.id ...)
+               parser
+               decoder)] ...
              [else (error 'make-evt-id "no supported version")])))]))

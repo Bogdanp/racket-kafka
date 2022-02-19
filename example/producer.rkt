@@ -15,10 +15,10 @@
   #:name "bar"
   #:partitions 8))
 (define evts
-  (for/list ([i (in-range 1024)])
+  (for/list ([i (in-range 128)])
     (define pid (modulo i 8))
     (define topic (random-ref '("foo" "bar")))
-    (produce p topic #"a" #"abcde" #:partition pid)))
+    (produce p topic #"a" (make-bytes 1024) #:partition pid)))
 
 (producer-flush p)
 (for ([evt (in-list evts)])

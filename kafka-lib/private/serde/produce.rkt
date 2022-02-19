@@ -6,7 +6,7 @@
 (define-record ProduceResponsePartition
   ([error-code error-code/c]
    [index exact-nonnegative-integer?]
-   [offset exact-nonnegative-integer?]))
+   [offset exact-integer?]))
 
 (define-record RecordResult
   ([topic string?]
@@ -34,6 +34,9 @@
   #:code 0
   #:version 3
   #:response proto:ProduceResponseV3
+  #:immed-response (λ (_data acks _timeout-ms)
+                     (and (eq? acks 'none)
+                          (ProduceResponse null)))
   enc-producev3
   dec-producev2)
 
