@@ -140,7 +140,7 @@
              (define res
                (if immed-response
                    (KRes immed-response (hasheqv))
-                   missing))
+                   pending))
              (define req (KReq nack ch res flexible? parser))
              (define header-data
                (with-output-bytes
@@ -171,7 +171,7 @@
            (loop s)])))
      (append
       (for/list ([(id r) (in-hash (state-reqs s))]
-                 #:unless (missing? (Req-res r)))
+                 #:unless (pending? (Req-res r)))
         (handle-evt
          (channel-put-evt (Req-ch r) (Req-res r))
          (lambda (_)
@@ -248,11 +248,11 @@
 (define (set-state-disconnected s)
   (struct-copy state s [connected? #f]))
 
-(define missing
-  (gensym 'missing))
+(define pending
+  (gensym 'pending))
 
-(define (missing? v)
-  (eq? v missing))
+(define (pending? v)
+  (eq? v pending))
 
 
 ;; version ranges ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
