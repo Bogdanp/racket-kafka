@@ -1,7 +1,6 @@
 #lang racket/base
 
 (require racket/contract
-         (prefix-in cproto: "../protocol-consumer.bnf")
          "core.rkt")
 
 (define-record Protocol
@@ -54,16 +53,3 @@
                  (make-Member
                   #:id (ref 'MemberID_1 m)
                   #:metadata (ref 'MemberMetadata_1 m))))))
-
-(provide
- make-RoundRobinProtocol)
-
-(define (make-RoundRobinProtocol topics)
-  (make-Protocol
-   #:name "roundrobin"
-   #:metadata (with-output-bytes
-                (cproto:un-MemberMetadata
-                 `((Version_1 . 0)
-                   (ArrayLen_1 . ,(length topics))
-                   (TopicName_1 ,@topics)
-                   (Data_1 . #""))))))
