@@ -13,6 +13,7 @@
  "serde/describe-groups.rkt"
  "serde/find-coordinator.rkt"
  "serde/group.rkt"
+ "serde/join-group.rkt"
  "serde/list-groups.rkt"
  "serde/produce.rkt"
  "serde/sasl-authenticate.rkt"

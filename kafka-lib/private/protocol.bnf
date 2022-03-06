@@ -112,13 +112,36 @@ FindCoordinatorResponseV3 = ThrottleTimeMs ErrorCode CompactErrorMessage NodeID 
 CompactHost               = CompactString;
 
 
+## JoinGroup (code 11)
+
+JoinGroupRequestV0 = GroupID SessionTimeoutMs MemberID ProtocolType ArrayLen Protocol{ArrayLen_1};
+SessionTimeoutMs   = i32be;
+GroupID            = String;
+MemberID           = String;
+ProtocolType       = String;
+Protocol           = ProtocolName ProtocolMetadata;
+ProtocolName       = String;
+ProtocolMetadata   = Bytes;
+JoinGroupRequestV1 = GroupID SessionTimeoutMs RebalanceTimeoutMs MemberID ProtocolType ArrayLen Protocol{ArrayLen_1};
+RebalanceTimeoutMs = i32be;
+JoinGroupRequestV2 = JoinGroupRequestV1;
+JoinGroupRequestV3 = JoinGroupRequestV1;
+JoinGroupRequestV4 = JoinGroupRequestV1;
+
+JoinGroupResponseV0 = ErrorCode GenerationID ProtocolName LeaderID MemberID ArrayLen Member{ArrayLen_1};
+GenerationID        = i32be;
+LeaderID            = String;
+Member              = MemberID MemberMetadata;
+MemberMetadata      = Bytes;
+JoinGroupResponseV1 = JoinGroupResponseV0;
+JoinGroupResponseV2 = ThrottleTimeMs ErrorCode GenerationID ProtocolName LeaderID MemberID ArrayLen Member{ArrayLen_1};
+JoinGroupResponseV3 = JoinGroupResponseV2;
+JoinGroupResponseV4 = JoinGroupResponseV2;
+
+
 ## Heartbeat (code 12)
 
 HeartbeatRequestV0 = GroupID GenerationID MemberID;
-GroupID            = String;
-GenerationID       = i32be;
-MemberID           = String;
-
 HeartbeatRequestV1 = HeartbeatRequestV0;
 HeartbeatRequestV2 = HeartbeatRequestV0;
 
@@ -151,11 +174,9 @@ DescribeGroupsRequestV5     = ArrayLen CompactGroupID{ArrayLen_1} IncludeAuthori
 DescribeGroupsResponseV0 = ArrayLen DescribeGroupsGroupV0{ArrayLen_1};
 DescribeGroupsGroupV0    = ErrorCode GroupID GroupState ProtocolType ProtocolData ArrayLen DescribeGroupsMemberV0{ArrayLen_1};
 GroupState               = String;
-ProtocolType             = String;
 ProtocolData             = String;
 DescribeGroupsMemberV0   = MemberID ClientID ClientHost MemberMetadata MemberAssignment;
 ClientHost               = String;
-MemberMetadata           = Bytes;
 MemberAssignment         = Bytes;
 
 DescribeGroupsResponseV1 = ThrottleTimeMs ArrayLen DescribeGroupsGroupV0{ArrayLen_1};

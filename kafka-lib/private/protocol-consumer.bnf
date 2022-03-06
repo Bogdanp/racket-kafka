@@ -1,0 +1,12 @@
+#lang binfmt
+
+@foreign-parsers "protocol-native.rkt"
+  {Bytes           un-Bytes}
+  {String          un-String}
+  ;
+
+MemberMetadata = Version ArrayLen TopicName{ArrayLen_1} Data;
+Version        = i16be;
+ArrayLen       = i32be;
+TopicName      = String;
+Data           = Bytes;
