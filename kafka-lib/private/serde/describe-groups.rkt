@@ -64,7 +64,7 @@
                             #:client-id (ref 'ClientID_1 m)
                             #:client-host (ref 'ClientHost_1 m)
                             #:metadata (ref 'MemberMetadata_1 m)
-                            #:assignment (ref 'MemberAssignment_1 m)))))))
+                            #:assignment (ref 'MemberAssignmentData_1 m)))))))
 
 (define dec-describe-groups-v0 (make-dec-describe-groups))
 (define dec-describe-groups-v1 (make-dec-describe-groups))

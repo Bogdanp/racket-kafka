@@ -161,6 +161,30 @@ HeartbeatResponseV3 = HeartbeatResponseV1;
 HeartbeatResponseV4 = ThrottleTimeMs ErrorCode Tags;
 
 
+## LeaveGroup (code 13)
+
+LeaveGroupRequestV0 = GroupID MemberID;
+LeaveGroupRequestV1 = LeaveGroupRequestV0;
+LeaveGroupRequestV2 = LeaveGroupRequestV0;
+
+LeaveGroupResponseV0 = ErrorCode;
+LeaveGroupResponseV1 = ThrottleTimeMs ErrorCode;
+LeaveGroupResponseV2 = LeaveGroupResponseV1;
+
+
+## SyncGroup (code 14)
+
+SyncGroupRequestV0   = GroupID GenerationID MemberID ArrayLen MemberAssignment{ArrayLen_1};
+MemberAssignment     = MemberID MemberAssignmentData;
+MemberAssignmentData = Bytes;
+SyncGroupRequestV1   = SyncGroupRequestV0;
+SyncGroupRequestV2   = SyncGroupRequestV0;
+
+SyncGroupResponseV0 = ErrorCode MemberAssignmentData;
+SyncGroupResponseV1 = ThrottleTimeMs ErrorCode MemberAssignmentData;
+SyncGroupResponseV2 = SyncGroupResponseV1;
+
+
 ## DescribeGroups (code 15)
 
 DescribeGroupsRequestV0     = ArrayLen GroupID{ArrayLen_1};
@@ -175,9 +199,8 @@ DescribeGroupsResponseV0 = ArrayLen DescribeGroupsGroupV0{ArrayLen_1};
 DescribeGroupsGroupV0    = ErrorCode GroupID GroupState ProtocolType ProtocolData ArrayLen DescribeGroupsMemberV0{ArrayLen_1};
 GroupState               = String;
 ProtocolData             = String;
-DescribeGroupsMemberV0   = MemberID ClientID ClientHost MemberMetadata MemberAssignment;
+DescribeGroupsMemberV0   = MemberID ClientID ClientHost MemberMetadata MemberAssignmentData;
 ClientHost               = String;
-MemberAssignment         = Bytes;
 
 DescribeGroupsResponseV1 = ThrottleTimeMs ArrayLen DescribeGroupsGroupV0{ArrayLen_1};
 DescribeGroupsResponseV2 = DescribeGroupsResponseV1;

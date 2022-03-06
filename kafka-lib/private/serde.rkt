@@ -14,7 +14,9 @@
  "serde/find-coordinator.rkt"
  "serde/group.rkt"
  "serde/join-group.rkt"
+ "serde/leave-group.rkt"
  "serde/list-groups.rkt"
  "serde/produce.rkt"
  "serde/sasl-authenticate.rkt"
- "serde/sasl-handshake.rkt")
+ "serde/sasl-handshake.rkt"
+ "serde/sync-group.rkt")
