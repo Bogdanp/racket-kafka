@@ -21,6 +21,7 @@
        `((GroupID_1 . ,group-id)
          (GenerationID_1 . ,generation-id)
          (MemberID_1 . ,member-id)
+         (ArrayLen_1 . ,(length member-assignments))
          (MemberAssignment_1 ,@(for/list ([a (in-list member-assignments)])
                                  `((MemberID_1 . ,(Assignment-member-id a))
                                    (MemberAssignmentData_1 . ,(Assignment-data a)))))))))

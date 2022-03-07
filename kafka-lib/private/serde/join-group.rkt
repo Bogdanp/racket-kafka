@@ -14,7 +14,7 @@
 (define-record JoinGroupResponse
   ([(throttle-time-ms #f) (or/c #f exact-nonnegative-integer?)]
    [error-code error-code/c]
-   [generation-id string?]
+   [generation-id exact-nonnegative-integer?]
    [protocol-name string?]
    [leader string?]
    [member-id string?]

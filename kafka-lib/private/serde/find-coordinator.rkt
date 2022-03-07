@@ -7,7 +7,7 @@
   ([(throttle-time-ms #f) (or/c #f exact-nonnegative-integer?)]
    [error-code error-code/c]
    [(error-message #f) (or/c #f string?)]
-   [node-id string?]
+   [node-id exact-nonnegative-integer?]
    [host string?]
    [port (integer-in 0 65535)]))
 

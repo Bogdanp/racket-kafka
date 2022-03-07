@@ -35,4 +35,4 @@
 (define (dec-leave-group res)
   (make-LeaveGroupResponse
    #:throttle-time-ms (opt 'ThrottleTimeMs_1 res)
-   #:error-code (res 'ErrorCode_1 res)))
+   #:error-code (or (opt 'ErrorCode_1 res) 0)))

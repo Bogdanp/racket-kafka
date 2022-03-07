@@ -10,3 +10,7 @@ Version        = i16be;
 ArrayLen       = i32be;
 TopicName      = String;
 Data           = Bytes;
+
+MemberAssignment = Version ArrayLen Assignment{ArrayLen_1} Data;
+Assignment       = TopicName ArrayLen PartitionID{ArrayLen_1};
+PartitionID      = i32be;
