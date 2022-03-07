@@ -10,6 +10,7 @@
  client?
  make-client
  get-connection
+ get-node-connection
  disconnect-all)
 
 (struct client
@@ -51,7 +52,17 @@
       b))
   (if (null? unconnected-brokers)
       (find-best-connection conns)
-      (establish-new-connection c conns unconnected-brokers)))
+      (establish-new-connection c conns (random-ref unconnected-brokers))))
+
+(define (get-node-connection c node-id)
+  (define brokers (client-brokers c))
+  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
+  (unless maybe-broker
+    (raise-argument-error 'get-node-connection "unknown node id" node-id))
+  (define conns
+    (drop-disconnected c))
+  (hash-ref conns node-id (λ ()
+                            (establish-new-connection c conns maybe-broker))))
 
 (define (disconnect-all c)
   (define connections-box (client-connections-box c))
@@ -65,8 +76,7 @@
      (for/hasheqv ([(node-id conn) (in-hash conns)] #:when (connected? conn))
        (values node-id conn)))))
 
-(define (establish-new-connection c conns brokers)
-  (define broker (random-ref brokers))
+(define (establish-new-connection c conns broker)
   (define node-id (BrokerMetadata-node-id broker))
   (define conn
     (connect
