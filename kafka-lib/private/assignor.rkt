@@ -64,8 +64,6 @@
               (Data_1 . #"")))))
 
        (define (assignor-assign _ topic-partitions metas)
-         (when (null? metas)
-           (error 'round-robin "member metadata must not be empty"))
          (define meta-by-id
            (for/hash ([m (in-list metas)])
              (values (metadata-member-id m) m)))
@@ -97,9 +95,6 @@
 
 (module+ test
   (require rackunit)
-  (check-exn
-   #rx"member metadata must not be empty"
-   (λ () (assignor-assign round-robin null null)))
   (check-equal?
    (assignor-assign round-robin null (list (metadata "m1" 0 '("t1" "t2") #"")))
    (hash))
