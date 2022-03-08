@@ -69,6 +69,24 @@ PartitionResponseV9   = PartitionIndex ErrorCode Offset LogAppendTimeMs LogStart
 CompactRecordError    = BatchIndex CompactErrorMessage Tags;
 
 
+## Fetch (code 1)
+
+FetchRequestV0 = ReplicaID MaxWaitMs MinBytes ArrayLen FetchTopic{ArrayLen_1};
+ReplicaID      = i32be;
+MaxWaitMs      = i32be;
+MinBytes       = i32be;
+FetchTopic     = TopicName ArrayLen FetchPartition{ArrayLen_1};
+FetchPartition = PartitionID FetchOffset MaxBytes;
+PartitionID    = i32be;
+FetchOffset    = i64be;
+MaxBytes       = i32be;
+
+FetchResponseV0        = ArrayLen FetchResponse{ArrayLen_1};
+FetchResponse          = TopicName ArrayLen FetchResponsePartition{ArrayLen_1};
+FetchResponsePartition = PartitionID ErrorCode HighWatermark Records;
+HighWatermark          = i64be;
+
+
 ## Metadata (code 3)
 
 MetadataRequestV1 = TopicNames;
@@ -89,7 +107,6 @@ IsInternal         = i8;
 PartitionMetadatas = ArrayLen PartitionMetadata{ArrayLen_1};
 PartitionMetadata  = PartitionErrorCode PartitionID Leader ArrayLen Replica{ArrayLen_1} ArrayLen ISR{ArrayLen_2};
 PartitionErrorCode = i16be;
-PartitionID        = i32be;
 Leader             = i32be;
 Replica            = i32be;
 ISR                = i32be;

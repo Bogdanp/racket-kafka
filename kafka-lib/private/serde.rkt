@@ -11,6 +11,7 @@
  "serde/create-topics.rkt"
  "serde/delete-topics.rkt"
  "serde/describe-groups.rkt"
+ "serde/fetch.rkt"
  "serde/find-coordinator.rkt"
  "serde/group.rkt"
  "serde/join-group.rkt"
