@@ -4,7 +4,8 @@
          binfmt/runtime/res
          binfmt/runtime/unparser
          racket/port
-         (prefix-in proto: "batch.bnf"))
+         (prefix-in proto: "batch.bnf")
+         (prefix-in b: "batch.rkt"))
 
 (provide
  (rename-out
@@ -15,11 +16,12 @@
   (res-bind
    (parse-i32be in)
    (lambda (len)
-     (define batch-in (make-limited-input-port in len #f))
-     (define b (proto:RecordBatch batch-in))
-     (ok `((Batch_1 . ,b)
-           (Records_1 . ,(for/list ([_ (in-range (cdr (assq 'RecordCount_1 b)))])
-                           (proto:Record batch-in))))))))
+     (with-handlers ([exn:fail? (λ (e) (err (exn-message e)))])
+       (define batches-in (make-limited-input-port in len #f))
+       (let loop ([batches null])
+         (if (eof-object? (peek-byte batches-in))
+             (ok (reverse batches))
+             (loop (cons (b:read-batch batches-in) batches))))))))
 
 (define (unparse-records out v)
   (unparse-i32be out (bytes-length v))

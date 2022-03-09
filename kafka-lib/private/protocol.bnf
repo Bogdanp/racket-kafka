@@ -71,20 +71,25 @@ CompactRecordError    = BatchIndex CompactErrorMessage Tags;
 
 ## Fetch (code 1)
 
-FetchRequestV0 = ReplicaID MaxWaitMs MinBytes ArrayLen FetchTopic{ArrayLen_1};
-ReplicaID      = i32be;
-MaxWaitMs      = i32be;
-MinBytes       = i32be;
-FetchTopic     = TopicName ArrayLen FetchPartition{ArrayLen_1};
-FetchPartition = PartitionID FetchOffset MaxBytes;
-PartitionID    = i32be;
-FetchOffset    = i64be;
-MaxBytes       = i32be;
+FetchRequestV4   = ReplicaID MaxWaitMs MinBytes MaxBytes IsolationLevel ArrayLen FetchTopicV4{ArrayLen_1};
+ReplicaID        = i32be;
+MaxWaitMs        = i32be;
+MinBytes         = i32be;
+MaxBytes         = i32be;
+IsolationLevel   = i8;
+FetchTopicV4     = TopicName ArrayLen FetchPartitionV4{ArrayLen_1};
+FetchPartitionV4 = PartitionID FetchOffset MaxBytes;
+PartitionID      = i32be;
+FetchOffset      = i64be;
 
-FetchResponseV0        = ArrayLen FetchResponse{ArrayLen_1};
-FetchResponse          = TopicName ArrayLen FetchResponsePartition{ArrayLen_1};
-FetchResponsePartition = PartitionID ErrorCode HighWatermark Records;
-HighWatermark          = i64be;
+FetchResponseV4          = ThrottleTimeMs ArrayLen FetchResponseDataV4{ArrayLen_1};
+FetchResponseDataV4      = TopicName ArrayLen FetchResponsePartitionV4{ArrayLen_1};
+FetchResponsePartitionV4 = PartitionID ErrorCode HighWatermark LastStableOffset ArrayLen AbortedTransaction{ArrayLen_1} Records;
+HighWatermark            = i64be;
+LastStableOffset         = i64be;
+AbortedTransaction       = ProducerID FirstOffset;
+ProducerID               = i64be;
+FirstOffset              = i64be;
 
 
 ## Metadata (code 3)

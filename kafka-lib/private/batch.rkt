@@ -1,9 +1,11 @@
 #lang racket/base
 
-(require file/gzip
+(require file/gunzip
+         file/gzip
          racket/port
          (prefix-in proto: "batch.bnf")
-         "crc.rkt")
+         "crc.rkt"
+         "help.rkt")
 
 (provide
  batch?
@@ -12,7 +14,9 @@
  batch-len
  batch-size
  batch-append!
- write-batch)
+ batch-records
+ write-batch
+ read-batch)
 
 (struct batch
   (base-offset
@@ -27,7 +31,8 @@
    [size #:mutable]
    buf
    data
-   data-out))
+   data-out
+   [records #:mutable]))
 
 (define (make-batch #:compression [compression 'none])
   (define buf (make-record-data))
@@ -50,7 +55,9 @@
    0 ;; size
    buf
    data
-   data-out))
+   data-out
+   #f ;; records
+   ))
 
 (define (batch-compression b)
   (case (bitwise-and (batch-attributes b) #b111)
@@ -137,7 +144,7 @@
 (module+ test
   (require rackunit)
 
-  (test-case "round trip"
+  (test-case "write"
     (define b (make-batch))
     (batch-append! b #"a" #"1" #:timestamp 5)
     (batch-append! b #"b" #"2" #:timestamp 20)
@@ -180,6 +187,80 @@
        (Key_1 . #"b")
        (Value_1 . #"2")
        (Headers_1 (HeadersLen_1 . 0) (Header_1))))))
+
+(define header-len 49)
+(define (read-batch in)
+  (define header (proto:RecordBatch in))
+  (define data-len
+    (- (ref 'BatchLength_1 header) header-len))
+  (define-values (records-in data-out)
+    (make-pipe))
+  (define the-batch
+    (batch
+     (ref 'BaseOffset_1 header)
+     (ref 'PartitionLeaderEpoch_1 header)
+     (ref 'BatchAttributes_1 header)
+     (ref 'LastOffsetDelta_1 header)
+     (ref 'FirstTimestamp_1 header)
+     (ref 'MaxTimestamp_1 header)
+     (ref 'ProducerID_1 header)
+     (ref 'ProducerEpoch_1 header)
+     (ref 'BaseSequence_1 header)
+     (ref 'RecordCount_1 header)
+     #f ;; buf
+     #f ;; data
+     #f ;; data-out
+     #f ;; records
+     ))
+  (define err-ch
+    (make-channel))
+  (thread
+   (lambda ()
+     (define data-in (make-limited-input-port in data-len #f))
+     (with-handlers ([exn:fail? (λ (e) (channel-put err-ch e))])
+       (define compression
+         (batch-compression the-batch))
+       (case compression
+         [(none) (copy-port data-in data-out)]
+         [(gzip) (gunzip-through-ports data-in data-out)]
+         [else (error 'read-batch "unsupported compression type: ~a" compression)]))))
+  (define size (batch-size the-batch))
+  (define records
+    (for/vector #:length size ([_ (in-range size)])
+      (sync
+       (handle-evt records-in proto:Record)
+       (handle-evt err-ch raise))))
+  (begin0 the-batch
+    (set-batch-records! the-batch records)))
+
+(module+ test
+  (test-case "read uncompressed"
+    (define b0 (make-batch))
+    (batch-append! b0 #"a" #"1" #:timestamp 0)
+    (define in
+      (open-input-bytes
+       (call-with-output-bytes
+        (lambda (out)
+          (write-batch b0 out)))))
+    (define b1 (read-batch in))
+    (check-equal? (batch-compression b1) 'none)
+    (check-equal? (batch-size b1) 1)
+    (check-equal? (ref 'Key_1 (vector-ref (batch-records b1) 0)) #"a")
+    (check-equal? (ref 'Value_1 (vector-ref (batch-records b1) 0)) #"1"))
+
+  (test-case "read gzipped"
+    (define b0 (make-batch #:compression 'gzip))
+    (batch-append! b0 #"a" #"1" #:timestamp 0)
+    (define in
+      (open-input-bytes
+       (call-with-output-bytes
+        (lambda (out)
+          (write-batch b0 out)))))
+    (define b1 (read-batch in))
+    (check-equal? (batch-compression b1) 'gzip)
+    (check-equal? (batch-size b1) 1)
+    (check-equal? (ref 'Key_1 (vector-ref (batch-records b1) 0)) #"a")
+    (check-equal? (ref 'Value_1 (vector-ref (batch-records b1) 0)) #"1")))
 
 
 ;; record-data ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

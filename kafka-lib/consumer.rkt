@@ -39,7 +39,7 @@
     (join-group! the-consumer)
     (start-heartbeat-thd! the-consumer)))
 
-(define (consume-evt c [timeout 0])
+(define (consume-evt c [timeout 1000])
   (choice-evt
    (handle-evt
     (consumer-heartbeat-ch c)
