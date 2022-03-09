@@ -4,14 +4,20 @@
          racket/match
          racket/port
          (prefix-in assign: "private/assignor.rkt")
+         "private/batch.rkt"
          "private/client.rkt"
          "private/connection.rkt"
          "private/error.rkt"
          "private/help.rkt"
          (prefix-in cproto: "private/protocol-consumer.bnf")
+         "private/record.rkt"
          "private/serde.rkt")
 
 (provide
+ record?
+ record-key
+ record-value
+
  consumer?
  make-consumer
  consume-evt
@@ -53,14 +59,45 @@
             (values 'rebalance (consumer-topic-partitions c))]
            [else (raise e)])]
         [else (raise e)])))
-   (make-Fetch-evt
-    (get-connection (consumer-client c))
-    (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-      (values topic (for/list ([pid (in-list pids)])
-                      (make-TopicPartition
-                       #:id pid
-                       #:offset 0))))
-    timeout)))
+   (handle-evt
+    (make-Fetch-evt
+     (get-connection (consumer-client c))
+     (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
+       (values topic (for/list ([(pid offset) (in-hash pids)])
+                       (make-TopicPartition
+                        #:id pid
+                        #:offset offset))))
+     timeout)
+    (lambda (res)
+      (define-values (offsets num-records)
+        (for*/fold ([offsets (hash)]
+                    [num-records 0])
+                   ([(topic partitions) (in-hash (FetchResponse-topics res))]
+                    [p (in-list partitions)]
+                    [b (in-list (FetchResponsePartition-batches p))])
+          (define key (cons topic (FetchResponsePartition-id p)))
+          (define size (batch-size b))
+          (define last-record
+            (and (not (zero? size))
+                 (vector-ref (batch-records b) (sub1 size))))
+          (values
+           (if last-record
+               (hash-set offsets key (record-offset last-record))
+               offsets)
+           (+ num-records size))))
+      (define topic-partitions
+        (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
+          (values topic (for/hash ([(pid offset) (in-hash partitions)])
+                          (values pid (hash-ref offsets (cons topic pid) offset))))))
+      (define records
+        (for*/vector #:length num-records
+                     ([partitions (in-hash-values (FetchResponse-topics res))]
+                      [p (in-list partitions)]
+                      [b (in-list (FetchResponsePartition-batches p))]
+                      [r (in-vector (batch-records b))])
+          r))
+      (set-consumer-topic-partitions! c topic-partitions)
+      (values 'records records)))))
 
 (define (consumer-stop c)
   (when (consumer-member-id c)
@@ -157,7 +194,8 @@
         (for/hash ([a (in-list (ref 'Assignment_1 (cproto:MemberAssignment in)))])
           (define topic (ref 'TopicName_1 a))
           (define pids (ref 'PartitionID_1 a))
-          (values topic pids)))))
+          (values topic (for/hash ([pid (in-list pids)])
+                          (values pid 0)))))))
   (set-consumer-topic-partitions! c topic-partitions))
 
 (define (leave-group! c)

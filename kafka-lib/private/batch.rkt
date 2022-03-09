@@ -5,7 +5,8 @@
          racket/port
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
-         "help.rkt")
+         "help.rkt"
+         "record.rkt")
 
 (provide
  batch?
@@ -228,7 +229,7 @@
   (define records
     (for/vector #:length size ([_ (in-range size)])
       (sync
-       (handle-evt records-in proto:Record)
+       (handle-evt records-in (compose1 parse-record proto:Record))
        (handle-evt err-ch raise))))
   (begin0 the-batch
     (set-batch-records! the-batch records)))
@@ -245,8 +246,8 @@
     (define b1 (read-batch in))
     (check-equal? (batch-compression b1) 'none)
     (check-equal? (batch-size b1) 1)
-    (check-equal? (ref 'Key_1 (vector-ref (batch-records b1) 0)) #"a")
-    (check-equal? (ref 'Value_1 (vector-ref (batch-records b1) 0)) #"1"))
+    (check-equal? (record-key (vector-ref (batch-records b1) 0)) #"a")
+    (check-equal? (record-value (vector-ref (batch-records b1) 0)) #"1"))
 
   (test-case "read gzipped"
     (define b0 (make-batch #:compression 'gzip))
@@ -259,8 +260,8 @@
     (define b1 (read-batch in))
     (check-equal? (batch-compression b1) 'gzip)
     (check-equal? (batch-size b1) 1)
-    (check-equal? (ref 'Key_1 (vector-ref (batch-records b1) 0)) #"a")
-    (check-equal? (ref 'Value_1 (vector-ref (batch-records b1) 0)) #"1")))
+    (check-equal? (record-key (vector-ref (batch-records b1) 0)) #"a")
+    (check-equal? (record-value (vector-ref (batch-records b1) 0)) #"1")))
 
 
 ;; record-data ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

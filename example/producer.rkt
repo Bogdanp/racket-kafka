@@ -2,23 +2,19 @@
 
 (require kafka
          kafka/producer
-         racket/random)
+         racket/format)
 
 (define c (make-client))
 (define p (make-producer c))
 (create-topics
  c
  (make-CreateTopic
-  #:name "foo"
-  #:partitions 8)
- (make-CreateTopic
-  #:name "bar"
-  #:partitions 8))
+  #:name "example-topic"
+  #:partitions 2))
 (define evts
   (for/list ([i (in-range 128)])
-    (define pid (modulo i 8))
-    (define topic (random-ref '("foo" "bar")))
-    (produce p topic #"a" (make-bytes 1024) #:partition pid)))
+    (define pid (modulo i 2))
+    (produce p "example-topic" #"a" (string->bytes/utf-8 (~a i)) #:partition pid)))
 
 (producer-flush p)
 (for ([evt (in-list evts)])
