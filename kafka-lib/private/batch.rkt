@@ -11,6 +11,7 @@
 (provide
  batch?
  make-batch
+ batch-base-offset
  batch-compression
  batch-len
  batch-size

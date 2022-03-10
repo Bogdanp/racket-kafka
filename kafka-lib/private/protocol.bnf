@@ -117,6 +117,20 @@ Replica            = i32be;
 ISR                = i32be;
 
 
+## OffsetCommit (code 8)
+
+OffsetCommitRequestV1          = GroupID GenerationID MemberID ArrayLen OffsetCommitRequestTopicV1{ArrayLen_1};
+OffsetCommitRequestTopicV1     = TopicName ArrayLen OffsetCommitRequestPartitionV1{ArrayLen_1};
+OffsetCommitRequestPartitionV1 = PartitionID CommittedOffset CommitTimestamp CommittedMetadata;
+CommittedOffset                = i64be;
+CommitTimestamp                = i64be;
+CommittedMetadata              = String;
+
+OffsetCommitResponseV1          = ArrayLen OffsetCommitResponseTopicV1{ArrayLen_1};
+OffsetCommitResponseTopicV1     = TopicName ArrayLen OffsetCommitResponsePartitionV1{ArrayLen_1};
+OffsetCommitResponsePartitionV1 = PartitionID ErrorCode;
+
+
 ## FindCoordinator (code 10)
 
 FindCoordinatorRequestV0  = CoordinatorKey;

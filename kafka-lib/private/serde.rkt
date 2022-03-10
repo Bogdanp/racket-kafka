@@ -6,17 +6,18 @@
     (provide (all-from-out mod ...))))
 
 (reprovide
- "serde/metadata.rkt"
- "serde/heartbeat.rkt"
+ "serde/commit.rkt"
  "serde/create-topics.rkt"
  "serde/delete-topics.rkt"
  "serde/describe-groups.rkt"
  "serde/fetch.rkt"
  "serde/find-coordinator.rkt"
  "serde/group.rkt"
+ "serde/heartbeat.rkt"
  "serde/join-group.rkt"
  "serde/leave-group.rkt"
  "serde/list-groups.rkt"
+ "serde/metadata.rkt"
  "serde/produce.rkt"
  "serde/sasl-authenticate.rkt"
  "serde/sasl-handshake.rkt"

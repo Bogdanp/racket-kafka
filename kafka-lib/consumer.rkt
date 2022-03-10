@@ -15,12 +15,14 @@
 
 (provide
  record?
+ record-offset
  record-key
  record-value
 
  consumer?
  make-consumer
  consume-evt
+ consumer-commit
  consumer-stop)
 
 (struct consumer
@@ -63,10 +65,13 @@
     (make-Fetch-evt
      (get-connection (consumer-client c))
      (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-       (values topic (for/list ([(pid offset) (in-hash pids)])
-                       (make-TopicPartition
-                        #:id pid
-                        #:offset offset))))
+       (define offsets
+         (for/list ([(pid offset) (in-hash pids)])
+           (make-TopicPartition
+            #:id pid
+            #:offset offset)))
+       (println offsets)
+       (values topic offsets))
      timeout)
     (lambda (res)
       (define-values (offsets num-records)
@@ -82,7 +87,8 @@
                  (vector-ref (batch-records b) (sub1 size))))
           (values
            (if last-record
-               (hash-set offsets key (record-offset last-record))
+               (hash-set offsets key (add1 (+ (batch-base-offset b)
+                                              (record-offset last-record))))
                offsets)
            (+ num-records size))))
       (define topic-partitions
@@ -98,6 +104,27 @@
           r))
       (set-consumer-topic-partitions! c topic-partitions)
       (values 'records records)))))
+
+(define (consumer-commit c)
+  (void
+   (sync
+    (handle-evt
+     (make-Commit-evt
+      (get-connection (consumer-client c))
+      (consumer-group-id c)
+      (consumer-generation-id c)
+      (consumer-member-id c)
+      (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
+        (values topic (for/list ([(pid offset) (in-hash partitions)])
+                        (make-CommitPartition
+                         #:id pid
+                         #:offset offset)))))
+     (lambda (res)
+       (for* ([partitions (in-hash-values res)]
+              [part (in-list partitions)])
+         (define err (CommitPartitionResult-error-code part))
+         (unless (zero? err)
+           (raise-server-error err))))))))
 
 (define (consumer-stop c)
   (when (consumer-member-id c)
