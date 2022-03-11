@@ -236,7 +236,6 @@
                           (define pid (PartitionOffset/Group-id part))
                           (define err (PartitionOffset/Group-error-code part))
                           (unless (zero? err)
-                            (log-kafka-error "error fetching offset for (~a, ~a)" topic pid)
                             (raise-server-error err))
                           (values pid (PartitionOffset/Group-offset part)))))))))
   (define uncommitted-topic-partitions
@@ -260,20 +259,10 @@
                               (define pid (PartitionOffset-id part))
                               (define err (PartitionOffset-error-code part))
                               (unless (zero? err)
-                                (log-kafka-error "error resetting offset for (~a, ~a)" topic pid)
                                 (raise-server-error err))
                               (values pid (PartitionOffset-offset part))))))))))
-  (define all-offsets
-    (hash-union committed-offsets reset-offsets #:combine/key (λ (_k _v1 v2) v2)))
   (define topic-partitions
-    (call-with-input-bytes assignment-data
-      (lambda (in)
-        (for/hash ([a (in-list (ref 'Assignment_1 (cproto:MemberAssignment in)))])
-          (define topic (ref 'TopicName_1 a))
-          (define pids (ref 'PartitionID_1 a))
-          (define offsets (hash-ref all-offsets topic))
-          (values topic (for/hash ([pid (in-list pids)])
-                          (values pid (hash-ref offsets pid))))))))
+    (hash-union committed-offsets reset-offsets #:combine/key (λ (_k _v1 v2) v2)))
   (set-consumer-topic-partitions! c topic-partitions))
 
 (define (leave-group! c)

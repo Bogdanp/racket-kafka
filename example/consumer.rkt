@@ -5,7 +5,7 @@
 
 (define c (make-consumer
            (make-client)
-           "example-group-4"
+           "example-group"
            "example-topic"))
 (for ([_ (in-range 2)])
   (with-handlers ([exn:break? void])
