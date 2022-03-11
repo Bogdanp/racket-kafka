@@ -131,6 +131,18 @@ OffsetCommitResponseTopicV1     = TopicName ArrayLen OffsetCommitResponsePartiti
 OffsetCommitResponsePartitionV1 = PartitionID ErrorCode;
 
 
+## OffsetFetch (code 9)
+
+OffsetFetchRequestV0          = GroupID ArrayLen OffsetFetchRequestTopicV0{ArrayLen_1};
+OffsetFetchRequestTopicV0     = TopicName ArrayLen OffsetFetchRequestPartitionV0{ArrayLen_1};
+OffsetFetchRequestPartitionV0 = PartitionID;
+
+OffsetFetchResponseV0          = ArrayLen OffsetFetchResponseTopicV0{ArrayLen_1};
+OffsetFetchResponseTopicV0     = TopicName ArrayLen OffsetFetchResponsePartitionV0{ArrayLen_1};
+OffsetFetchResponsePartitionV0 = PartitionID CommittedOffset OffsetFetchMetadata ErrorCode;
+OffsetFetchMetadata            = String;
+
+
 ## FindCoordinator (code 10)
 
 FindCoordinatorRequestV0  = CoordinatorKey;
