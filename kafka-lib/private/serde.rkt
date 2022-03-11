@@ -18,6 +18,7 @@
  "serde/join-group.rkt"
  "serde/leave-group.rkt"
  "serde/list-groups.rkt"
+ "serde/list-offsets.rkt"
  "serde/metadata.rkt"
  "serde/produce.rkt"
  "serde/sasl-authenticate.rkt"

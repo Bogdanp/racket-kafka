@@ -92,6 +92,18 @@ ProducerID               = i64be;
 FirstOffset              = i64be;
 
 
+## ListOffsets (code 2)
+
+ListOffsetsRequestV2          = ReplicaID IsolationLevel ArrayLen ListOffsetsRequestTopicV2{ArrayLen_1};
+ListOffsetsRequestTopicV2     = TopicName ArrayLen ListOffsetsRequestPartitionV2{ArrayLen_1};
+ListOffsetsRequestPartitionV2 = PartitionID Timestamp;
+Timestamp                     = i64be;
+
+ListOffsetsResponseV2          = ThrottleTimeMs ArrayLen ListOffsetsResponseTopicV2{ArrayLen_1};
+ListOffsetsResponseTopicV2     = TopicName ArrayLen ListOffsetsResponsePartitionV2{ArrayLen_1};
+ListOffsetsResponsePartitionV2 = PartitionID ErrorCode Timestamp Offset;
+
+
 ## Metadata (code 3)
 
 MetadataRequestV1 = TopicNames;

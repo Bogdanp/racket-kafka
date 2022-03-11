@@ -32,7 +32,10 @@
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
   [describe-groups (-> client? string? ... (listof Group?))]
-  [list-groups (-> client? (listof Group?))]))
+  [list-groups (-> client? (listof Group?))]
+  [list-offsets (-> client?
+                    (hash/c string? (hash/c exact-nonnegative-integer? (or/c 'earliest 'latest exact-nonnegative-integer?)))
+                    (hash/c string? PartitionOffset?))]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -54,3 +57,6 @@
 
 (define (list-groups c)
   (sync (make-ListGroups-evt (get-connection c))))
+
+(define (list-offsets c topics)
+  (sync (make-ListOffsets-evt (get-connection c) topics)))
