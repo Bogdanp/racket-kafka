@@ -68,13 +68,10 @@
     (make-Fetch-evt
      (get-connection (consumer-client c))
      (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-       (define offsets
-         (for/list ([(pid offset) (in-hash pids)])
-           (make-TopicPartition
-            #:id pid
-            #:offset offset)))
-       (println offsets)
-       (values topic offsets))
+       (values topic (for/list ([(pid offset) (in-hash pids)])
+                       (make-TopicPartition
+                        #:id pid
+                        #:offset offset))))
      timeout)
     (lambda (res)
       (define current-topic-partitions
