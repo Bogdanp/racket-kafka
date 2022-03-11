@@ -189,6 +189,7 @@
        (Value_1 . #"2")
        (Headers_1 (HeadersLen_1 . 0) (Header_1))))))
 
+;; TODO: Validate CRCs.
 (define header-len 49)
 (define (read-batch in)
   (define header (proto:RecordBatch in))
