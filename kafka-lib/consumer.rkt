@@ -226,7 +226,7 @@
           (define topic (ref 'TopicName_1 a))
           (define pids (ref 'PartitionID_1 a))
           (values topic pids)))))
-  (define committed-offsets
+  (define commmitted-topic-partitions
     (sync
      (handle-evt
       (make-FetchOffsets-evt conn (consumer-group-id c) topics&partitions)
@@ -240,14 +240,14 @@
                           (values pid (PartitionOffset/Group-offset part)))))))))
   (define uncommitted-topic-partitions
     (for/fold ([topics (hash)])
-              ([(topic partitions) (in-hash committed-offsets)])
+              ([(topic partitions) (in-hash commmitted-topic-partitions)])
       (define uncommitted-partitions
         (for/hash ([(pid offset) (in-hash partitions)] #:when (= offset -1))
           (values pid (consumer-offset-reset-strategy c))))
       (cond
         [(hash-empty? uncommitted-partitions) topics]
         [else (hash-set topics topic uncommitted-partitions)])))
-  (define reset-offsets
+  (define reset-topic-partitions
     (if (hash-empty? uncommitted-topic-partitions)
         (hash)
         (sync
@@ -262,7 +262,14 @@
                                 (raise-server-error err))
                               (values pid (PartitionOffset-offset part))))))))))
   (define topic-partitions
-    (hash-union committed-offsets reset-offsets #:combine/key (λ (_k _v1 v2) v2)))
+    (hash-union
+     #:combine/key (λ (_topic committed-partitions reset-partitions)
+                     (hash-union
+                      #:combine/key (λ (_pid _committed-offset reset-offset) reset-offset)
+                      committed-partitions
+                      reset-partitions))
+     commmitted-topic-partitions
+     reset-topic-partitions))
   (set-consumer-topic-partitions! c topic-partitions))
 
 (define (leave-group! c)
