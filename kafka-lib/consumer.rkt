@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require racket/list
+(require racket/hash
+         racket/list
          racket/match
          racket/port
          (prefix-in assign: "private/assignor.rkt")
@@ -35,14 +36,16 @@
    heartbeat-ch
    [heartbeat-thd #:mutable]
    assignors
+   offset-reset-strategy
    sesion-timeout-ms))
 
 (define (make-consumer client group-id
                        #:assignors [assignors (list assign:round-robin)]
+                       #:offset-reset-strategy [offset-reset-strategy 'earliest]
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)
   (define the-consumer
-    (consumer client group-id 0 #f topics #f (make-channel) #f assignors session-timeout-ms))
+    (consumer client group-id 0 #f topics #f (make-channel) #f assignors offset-reset-strategy session-timeout-ms))
   (begin0 the-consumer
     (join-group! the-consumer)
     (start-heartbeat-thd! the-consumer)))
@@ -216,14 +219,61 @@
       (consumer-generation-id c)
       (consumer-member-id c)
       assignments)))
+  (define topics&partitions
+    (call-with-input-bytes assignment-data
+      (lambda (in)
+        (for/hash ([a (in-list (ref 'Assignment_1 (cproto:MemberAssignment in)))])
+          (define topic (ref 'TopicName_1 a))
+          (define pids (ref 'PartitionID_1 a))
+          (values topic pids)))))
+  (define committed-offsets
+    (sync
+     (handle-evt
+      (make-FetchOffsets-evt conn (consumer-group-id c) topics&partitions)
+      (lambda (res)
+        (for/hash ([(topic partitions) (in-hash res)])
+          (values topic (for/hash ([part (in-list partitions)])
+                          (define pid (PartitionOffset/Group-id part))
+                          (define err (PartitionOffset/Group-error-code part))
+                          (unless (zero? err)
+                            (log-kafka-error "error fetching offset for (~a, ~a)" topic pid)
+                            (raise-server-error err))
+                          (values pid (PartitionOffset/Group-offset part)))))))))
+  (define uncommitted-topic-partitions
+    (for/fold ([topics (hash)])
+              ([(topic partitions) (in-hash committed-offsets)])
+      (define uncommitted-partitions
+        (for/hash ([(pid offset) (in-hash partitions)] #:when (= offset -1))
+          (values pid (consumer-offset-reset-strategy c))))
+      (cond
+        [(hash-empty? uncommitted-partitions) topics]
+        [else (hash-set topics topic uncommitted-partitions)])))
+  (define reset-offsets
+    (if (hash-empty? uncommitted-topic-partitions)
+        (hash)
+        (sync
+         (handle-evt
+          (make-ListOffsets-evt conn uncommitted-topic-partitions)
+          (lambda (res)
+            (for/hash ([(topic partitions) (in-hash res)])
+              (values topic (for/hash ([part (in-list partitions)])
+                              (define pid (PartitionOffset-id part))
+                              (define err (PartitionOffset-error-code part))
+                              (unless (zero? err)
+                                (log-kafka-error "error resetting offset for (~a, ~a)" topic pid)
+                                (raise-server-error err))
+                              (values pid (PartitionOffset-offset part))))))))))
+  (define all-offsets
+    (hash-union committed-offsets reset-offsets #:combine/key (λ (_k _v1 v2) v2)))
   (define topic-partitions
     (call-with-input-bytes assignment-data
       (lambda (in)
         (for/hash ([a (in-list (ref 'Assignment_1 (cproto:MemberAssignment in)))])
           (define topic (ref 'TopicName_1 a))
           (define pids (ref 'PartitionID_1 a))
+          (define offsets (hash-ref all-offsets topic))
           (values topic (for/hash ([pid (in-list pids)])
-                          (values pid 0)))))))
+                          (values pid (hash-ref offsets pid))))))))
   (set-consumer-topic-partitions! c topic-partitions))
 
 (define (leave-group! c)
