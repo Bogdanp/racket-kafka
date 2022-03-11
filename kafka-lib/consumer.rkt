@@ -29,12 +29,7 @@
                        #:session-timeout-ms exact-nonnegative-integer?)
                       #:rest (non-empty-listof string?)
                       consumer?)]
-  [consume-evt (->* (consumer?)
-                    (exact-nonnegative-integer?)
-                    (evt/c
-                     (or/c
-                      (values 'rebalance (hash/c string? (hash/c exact-nonnegative-integer? exact-nonnegative-integer?)))
-                      (values 'records (vectorof record?)))))]
+  [consume-evt (->* (consumer?) (exact-nonnegative-integer?) evt?)]
   [consumer-commit (-> consumer? void?)]
   [consumer-stop (-> consumer? void?)]))
 
@@ -118,7 +113,6 @@
       (set-consumer-topic-partitions! c topic-partitions)
       (values 'records records)))))
 
-;; TODO: Ignore commit-after-rebalance?
 (define (consumer-commit c)
   (void
    (sync
@@ -134,11 +128,15 @@
                          #:id pid
                          #:offset offset)))))
      (lambda (res)
-       (for* ([partitions (in-hash-values res)]
+       (for* ([(topic partitions) (in-hash res)]
               [part (in-list partitions)])
+         (define pid (CommitPartitionResult-id part))
          (define err (CommitPartitionResult-error-code part))
-         (unless (zero? err)
-           (raise-server-error err))))))))
+         (case err
+           [(25) ;; unknown member id
+            (log-kafka-warning "commit on (~a, ~a) ignored due to rebalance" topic pid)]
+           [else
+            (raise-server-error err)])))))))
 
 (define (consumer-stop c)
   (when (consumer-member-id c)

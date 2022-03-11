@@ -41,7 +41,8 @@
                                               (OffsetCommitRequestPartitionV1_1 . ,partition-data))))))))
   (lambda (res)
     (for/hash ([t (in-list (ref 'OffsetCommitResponseTopicV1_1 res))])
-      (values t (for/list ([p (in-list (ref 'OffsetCommitResponsePartitionV1_1 t))])
-                  (make-CommitPartitionResult
-                   #:id (ref 'PartitionID_1 p)
-                   #:error-code (ref 'ErrorCode_1 p)))))))
+      (define topic (ref 'TopicName_1 t))
+      (values topic (for/list ([p (in-list (ref 'OffsetCommitResponsePartitionV1_1 t))])
+                      (make-CommitPartitionResult
+                       #:id (ref 'PartitionID_1 p)
+                       #:error-code (ref 'ErrorCode_1 p)))))))
