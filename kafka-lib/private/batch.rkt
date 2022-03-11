@@ -11,7 +11,6 @@
 (provide
  batch?
  make-batch
- batch-base-offset
  batch-compression
  batch-len
  batch-size
@@ -226,11 +225,15 @@
          [(none) (copy-port data-in data-out)]
          [(gzip) (gunzip-through-ports data-in data-out)]
          [else (error 'read-batch "unsupported compression type: ~a" compression)]))))
+  (define base-offset (batch-base-offset the-batch))
   (define size (batch-size the-batch))
   (define records
     (for/vector #:length size ([_ (in-range size)])
       (sync
-       (handle-evt records-in (compose1 parse-record proto:Record))
+       (handle-evt
+        records-in
+        (λ (data)
+          (parse-record (proto:Record data) base-offset)))
        (handle-evt err-ch raise))))
   (begin0 the-batch
     (set-batch-records! the-batch records)))

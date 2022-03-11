@@ -74,9 +74,20 @@
        (values topic offsets))
      timeout)
     (lambda (res)
-      (define-values (offsets num-records)
-        (for*/fold ([offsets (hash)]
-                    [num-records 0])
+      (define current-topic-partitions
+        (consumer-topic-partitions c))
+      (define records
+        (for*/vector ([(topic partitions) (in-hash (FetchResponse-topics res))]
+                      [p (in-list partitions)]
+                      [pid (in-value (FetchResponsePartition-id p))]
+                      [offsets (in-value (hash-ref current-topic-partitions topic))]
+                      [offset (in-value (hash-ref offsets pid))]
+                      [b (in-list (FetchResponsePartition-batches p))]
+                      [r (in-vector (batch-records b))]
+                      #:when (>= (record-offset r) offset))
+          r))
+      (define offsets
+        (for*/fold ([offsets (hash)])
                    ([(topic partitions) (in-hash (FetchResponse-topics res))]
                     [p (in-list partitions)]
                     [b (in-list (FetchResponsePartition-batches p))])
@@ -85,23 +96,13 @@
           (define last-record
             (and (not (zero? size))
                  (vector-ref (batch-records b) (sub1 size))))
-          (values
-           (if last-record
-               (hash-set offsets key (add1 (+ (batch-base-offset b)
-                                              (record-offset last-record))))
-               offsets)
-           (+ num-records size))))
+          (if last-record
+              (hash-set offsets key (add1 (record-offset last-record)))
+              offsets)))
       (define topic-partitions
         (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
           (values topic (for/hash ([(pid offset) (in-hash partitions)])
                           (values pid (hash-ref offsets (cons topic pid) offset))))))
-      (define records
-        (for*/vector #:length num-records
-                     ([partitions (in-hash-values (FetchResponse-topics res))]
-                      [p (in-list partitions)]
-                      [b (in-list (FetchResponsePartition-batches p))]
-                      [r (in-vector (batch-records b))])
-          r))
       (set-consumer-topic-partitions! c topic-partitions)
       (values 'records records)))))
 

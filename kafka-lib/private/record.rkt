@@ -8,8 +8,8 @@
 
 (struct record (offset key value))
 
-(define (parse-record r)
+(define (parse-record r [base-offset 0])
   (record
-   (ref 'OffsetDelta_1 r)
+   (+ base-offset (ref 'OffsetDelta_1 r))
    (ref 'Key_1 r)
    (ref 'Value_1 r)))
