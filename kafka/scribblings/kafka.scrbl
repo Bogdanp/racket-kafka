@@ -226,18 +226,18 @@ Consumers are not thread-safe.
   Returns the record's value.
 }
 
-@subsection{Limitations}
+@subsection[#:tag "consumer-limitations"]{Limitations}
 
 Consumers have several limitations at the moment, some of which will
 be addressed in future versions.
 
-@subsubsection{Compression}
+@subsubsection[#:tag "consumer-limitations-compression"]{Compression}
 
 The only supported compression type at the moment is @racket['gzip].
 Fetching a batch of records that is compressed using any other method
 will raise an error.
 
-@subsubsection{Group Assignment}
+@subsubsection[#:tag "conusmer-limitations-assignment"]{Group Assignment}
 
 @(define client-side-assignment-proposal
   (link "https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Client-side+Assignment+Proposal"
@@ -246,6 +246,11 @@ will raise an error.
 Only brokers that implement @client-side-assignment-proposal are
 supported (Apache Kafka versions 0.11 and up).  At the moment, only
 the round-robin group assignment strategy is implemented.
+
+@subsubsection[#:tag "consumer-limitations-err-detection"]{Error Detection}
+
+Batches retrieved from the broker contain a CRC code for error
+detection, but the library does not validate these at the moment.
 
 
 @section{Producer}
