@@ -9,7 +9,7 @@
 (create-topics
  c
  (make-CreateTopic
-  #:name "example-topic"
+  #:name "example-topic2"
   #:partitions 2))
 (define evts
   (for/list ([i (in-range 128)])

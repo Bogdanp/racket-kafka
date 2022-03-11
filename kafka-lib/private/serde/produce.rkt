@@ -4,8 +4,8 @@
          "core.rkt")
 
 (define-record ProduceResponsePartition
-  ([error-code error-code/c]
-   [index exact-nonnegative-integer?]
+  ([id exact-nonnegative-integer?]
+   [error-code error-code/c]
    [offset exact-integer?]))
 
 (define-record RecordResult
@@ -20,7 +20,7 @@
   ([topics (listof ProduceResponseTopic?)]))
 
 (define-record PartitionData
-  ([index exact-integer?]
+  ([id exact-integer?]
    [batch bytes?]))
 
 (define-record TopicData
@@ -59,7 +59,7 @@
                          `((TopicName_1 . ,(TopicData-name d))
                            (ArrayLen_1 . ,(length parts))
                            (PartitionData_1 . ,(for/list ([p (in-list parts)])
-                                                 `((PartitionIndex_1 . ,(PartitionData-index p))
+                                                 `((PartitionID_1 . ,(PartitionData-id p))
                                                    (Records_1 . ,(PartitionData-batch p))))))))))))
 
 (define (dec-producev2 res)
@@ -68,7 +68,7 @@
      (ProduceResponseTopic
       (ref 'TopicName_1 t)
       (for/list ([p (in-list (ref 'PartitionResponseV2_1 t))])
-        (ProduceResponsePartition
-         (ref 'ErrorCode_1 p)
-         (ref 'PartitionIndex_1 p)
-         (ref 'Offset_1 p)))))))
+        (make-ProduceResponsePartition
+         #:id (ref 'PartitionID_1 p)
+         #:error-code (ref 'ErrorCode_1 p)
+         #:offset (ref 'Offset_1 p)))))))

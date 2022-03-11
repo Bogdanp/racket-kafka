@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require racket/hash
+(require racket/contract
+         racket/hash
          racket/list
          racket/match
          racket/port
@@ -20,11 +21,22 @@
  record-key
  record-value
 
- consumer?
- make-consumer
- consume-evt
- consumer-commit
- consumer-stop)
+ (contract-out
+  [consumer? (-> any/c boolean?)]
+  [make-consumer (->* (client? string?)
+                      (#:assignors (listof assign:assignor?)
+                       #:reset-strategy (or/c 'earliest 'latest)
+                       #:session-timeout-ms exact-nonnegative-integer?)
+                      #:rest (non-empty-listof string?)
+                      consumer?)]
+  [consume-evt (->* (consumer?)
+                    (exact-nonnegative-integer?)
+                    (evt/c
+                     (or/c
+                      (values 'rebalance (hash/c string? (hash/c exact-nonnegative-integer? exact-nonnegative-integer?)))
+                      (values 'records (vectorof record?)))))]
+  [consumer-commit (-> consumer? void?)]
+  [consumer-stop (-> consumer? void?)]))
 
 (struct consumer
   (client
@@ -41,7 +53,7 @@
 
 (define (make-consumer client group-id
                        #:assignors [assignors (list assign:round-robin)]
-                       #:offset-reset-strategy [offset-reset-strategy 'earliest]
+                       #:reset-strategy [offset-reset-strategy 'earliest]
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)
   (define the-consumer
@@ -106,6 +118,7 @@
       (set-consumer-topic-partitions! c topic-partitions)
       (values 'records records)))))
 
+;; TODO: Ignore commit-after-rebalance?
 (define (consumer-commit c)
   (void
    (sync

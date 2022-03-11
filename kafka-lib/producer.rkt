@@ -92,7 +92,7 @@
                      (define topic
                        (ProduceResponseTopic-name t))
                      (define pid
-                       (ProduceResponsePartition-index p))
+                       (ProduceResponsePartition-id p))
                      (define topic&pid
                        (cons topic pid))
                      (define error-code
@@ -317,7 +317,7 @@
        #:name topic
        #:partitions (for/list ([(pid b) (in-hash parts)])
                       (make-PartitionData
-                       #:index pid
+                       #:id pid
                        #:batch (call-with-output-bytes
                                 (lambda (out)
                                   (write-batch b out))))))))

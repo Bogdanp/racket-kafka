@@ -34,7 +34,7 @@
           (Assignments_1
            . ((ArrayLen_1   . ,(hash-count assignments))
               (Assignment_1 . ,(for/list ([(pid bids) (in-hash assignments)])
-                                 `((PartitionIndex_1 . ,pid)
+                                 `((PartitionID_1 . ,pid)
                                    (BrokerIDs_1 . ((ArrayLen_1 . ,(length bids))
                                                    (BrokerID_1 . ,bids))))))))
           (Configs_1
