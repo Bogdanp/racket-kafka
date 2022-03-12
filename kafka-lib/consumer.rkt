@@ -133,6 +133,8 @@
          (define pid (CommitPartitionResult-id part))
          (define err (CommitPartitionResult-error-code part))
          (case err
+           [(0) ;; no error
+            (void)]
            [(25) ;; unknown member id
             (log-kafka-warning "commit on (~a, ~a) ignored due to rebalance" topic pid)]
            [else
