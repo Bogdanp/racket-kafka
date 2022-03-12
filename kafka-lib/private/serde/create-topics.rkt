@@ -51,6 +51,6 @@
   (lambda (res)
     (CreatedTopics
      (for/list ([t (in-list (ref 'CreateTopicsResponseTopicV0_1 res))])
-       (CreatedTopic
-        (ref 'TopicName_1 t)
-        (ref 'ErrorCode_1 t))))))
+       (make-CreatedTopic
+        #:name (ref 'TopicName_1 t)
+        #:error-code (ref 'ErrorCode_1 t))))))
