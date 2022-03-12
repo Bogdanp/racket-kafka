@@ -1,6 +1,7 @@
 # racket-kafka
 
-A Racket client for [Apache Kafka][kafka] versions 0.11 and up.
+A Racket client for [Apache Kafka][kafka] versions 0.11 and up.  You
+can find the [docs] on the Racket package server.
 
 ## License
 
@@ -8,3 +9,4 @@ A Racket client for [Apache Kafka][kafka] versions 0.11 and up.
 
 
 [kafka]: https://kafka.apache.org/
+[docs]: https://docs.racket-lang.org/kafka/index.html
