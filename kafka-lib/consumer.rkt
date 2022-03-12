@@ -65,7 +65,7 @@
       (cond
         [(exn:fail:kafka:server? e)
          (case (exn:fail:kafka:server-code e)
-           [(27) ;; rebalance in progress
+           [(25 27) ;; unknown member id, rebalance in progress
             (join-group! c)
             (start-heartbeat-thd! c)
             (values 'rebalance (consumer-topic-partitions c))]
