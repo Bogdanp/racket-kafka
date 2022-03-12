@@ -7,6 +7,7 @@
 
 (reprovide
  "serde/commit.rkt"
+ "serde/contract.rkt"
  "serde/create-topics.rkt"
  "serde/delete-topics.rkt"
  "serde/describe-groups.rkt"

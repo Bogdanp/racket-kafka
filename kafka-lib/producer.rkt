@@ -34,7 +34,7 @@
          #:acks [acks 'leader]
          #:compression [compression 'gzip]
          #:flush-interval [flush-interval-ms 60000]
-         #:max-batch-bytes [max-batch-len (* 100 1024 1024)]
+         #:max-batch-bytes [max-batch-bytes (* 100 1024 1024)]
          #:max-batch-size [max-batch-size 1000])
   (define ch (make-channel))
   (define batcher
@@ -48,7 +48,7 @@
        (define (flush?)
          (define-values (bs sz)
            (batch-stats batches))
-         (or (> bs max-batch-len)
+         (or (> bs max-batch-bytes)
              (> sz max-batch-size)))
        ; (listof Req?) -> (evt/c (cons/c (or/c exn? ProduceResponse?) (listof Req?)))
        (define (make-flush-evt pending-reqs)

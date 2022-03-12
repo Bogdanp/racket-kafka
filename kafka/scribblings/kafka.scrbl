@@ -63,12 +63,16 @@ connection errors bubble up to the caller.
   Predicates for the various kinds of errors that may be raised.
 }
 
-@subsection{Topics}
+@subsection{Topic Management}
 
 @defproc[(create-topics [c client?]
                         [t CreateTopic?] ...+) CreatedTopics?]{
 
   Creates the given topics on the broker if they don't already exist.
+
+  When given a set of topics, some of them may succeed, and some may
+  fail.  It's up to the caller to inspect the error codes on the
+  returned @racket[CreatedTopic]s.
 }
 
 @defproc[(delete-topics [c client?]
@@ -100,6 +104,21 @@ connection errors bubble up to the caller.
   Structs representing the results of calling @racket[create-topics].
 }
 
+@deftogether[(
+  @defstruct[DeletedTopics ([throttle-time-ms (or/c exact-nonnegative-integer?)]
+                            [topics (listof DeletedTopic?)]
+                            [tags (or/c #f tags/c)])
+                           #:omit-constructor]
+  @defstruct[DeletedTopic ([error-code error-code/c]
+                           [error-message (or/c #f string?)]
+                           [name string?]
+                           [uuid (or/c #f bytes?)]
+                           [tags (or/c #f tags/c)])
+                          #:omit-constructor]
+)]{
+  Structs representing the results of calling @racket[delete-topics].
+}
+
 @subsection{Record Results}
 
 @deftech{Record results} represent the results of publishing
@@ -120,6 +139,16 @@ individual records.
   Details about the partition a record was published to.  If the
   @racket[error-code] is non-zero, there was an error and the record
   was not published.
+}
+
+@subsection{Contracts}
+
+@defthing[error-code/c exact-nonnegative-integer?]{
+  The contract for error codes.
+}
+
+@defthing[tags/c hash?]{
+  The contract for tags.
 }
 
 
@@ -272,13 +301,14 @@ batch data internally by topic & partition, and they are thread-safe.
 
   Returns a @tech{producer}.
 
-  Data is batched internally by topic & partition.  Within each batch
-  the data is compressed according to @racket[#:compression].
+  Data is batched internally by topic & partition.  Within each batch,
+  the data is compressed according to the @racket[#:compression]
+  method.
 
   The producer automatically flushes its data every
-  @racket[#:flush-interval] milliseconds, or whenever the total size
-  of all its batches exceeds @racket[#:max-batch-bytes], or whenever
-  the total number of records contained in all of its batches exceeds
+  @racket[#:flush-interval] milliseconds, whenever the total size of
+  all its batches exceeds @racket[#:max-batch-bytes], or whenever the
+  total number of records contained in all of its batches exceeds
   @racket[#:max-batch-size], whichever occurs first.
 
   During a flush, calling @racket[produce] on a producer blocks until
