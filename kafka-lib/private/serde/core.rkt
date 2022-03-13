@@ -129,5 +129,8 @@
        [else
         (define err-code (or (opt 'ErrorCode_1 res) 0))
         (unless (zero? err-code)
-          (raise-server-error err-code))
+          (raise-server-error
+           err-code
+           "~a~n  key: ~s~n  version: ~s"
+           (error-code-message err-code) key ver))
         (proc res)]))))
