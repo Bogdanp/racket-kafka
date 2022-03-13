@@ -38,13 +38,13 @@
       (for/list ([i (in-range P)])
         (thread
          (lambda ()
-           (let loop ()
+           (let join-loop ()
              (with-handlers ([exn:fail:kafka:server?
                               (lambda (e)
                                 (define code (exn:fail:kafka:server-code e))
                                 (case (error-code-symbol code)
                                   [(rebalance-in-progress)
-                                   (loop)]
+                                   (join-loop)]
                                   [else
                                    (raise e)]))])
                (define k (make-client #:id (~a "consumer-" i)))
