@@ -47,7 +47,7 @@
    sesion-timeout-ms))
 
 (define (make-consumer client group-id
-                       #:assignors [assignors (list assign:round-robin)]
+                       #:assignors [assignors (list assign:range assign:round-robin)]
                        #:reset-strategy [offset-reset-strategy 'earliest]
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)

@@ -274,7 +274,7 @@ will raise an error.
 
 Only brokers that implement @client-side-assignment-proposal are
 supported (Apache Kafka versions 0.11 and up).  At the moment, only
-the round-robin group assignment strategy is implemented.
+the range and round-robin group assignment strategies are implemented.
 
 @subsubsection[#:tag "consumer-limitations-err-detection"]{Error Detection}
 

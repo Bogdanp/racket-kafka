@@ -2,6 +2,7 @@
 
 (require racket/contract
          racket/generic
+         racket/list
          "help.rkt"
          (prefix-in cproto: "protocol-consumer.bnf"))
 
@@ -42,6 +43,121 @@
 (struct topic-partition (topic pid)
   #:transparent)
 
+(define (enc-member-metadata topics [version 0])
+  (with-output-bytes
+    (cproto:un-MemberMetadata
+     `((Version_1 . ,version)
+       (ArrayLen_1 . ,(length topics))
+       (TopicName_1 . ,topics)
+       (Data_1 . #"")))))
+
+
+;; range ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(provide
+ range)
+
+(define range
+  (let ()
+    (struct range ()
+      #:methods gen:assignor
+      [(define (assignor-name _)
+         "range")
+
+       (define (assignor-metadata _ topics)
+         (enc-member-metadata topics))
+
+       (define (assignor-assign _ topic-partitions metas)
+         (define members-by-topic
+           (for*/fold ([members-by-topic (hash)]
+                       #:result (for/hash ([(topic mids) (in-hash members-by-topic)])
+                                  (values topic (reverse mids))))
+                      ([m (in-list metas)]
+                       [t (in-list (metadata-topics m))])
+             (define mid (metadata-member-id m))
+             (hash-update members-by-topic t (λ (ms) (cons mid ms)) null)))
+         (for/fold ([assignments (hash)])
+                   ([(topic member-ids) (in-hash members-by-topic)])
+           (define pids
+             (for/list ([t&p (in-list topic-partitions)] #:when (string=? (topic-partition-topic t&p) topic))
+               (topic-partition-pid t&p)))
+           (define-values (partitions-per-member members-with-extra)
+             (quotient/remainder
+              (length pids)
+              (length member-ids)))
+           (for/fold ([assignments assignments])
+                     ([(member-id idx) (in-indexed (in-list member-ids))])
+             (define pos
+               (+ (* idx partitions-per-member)
+                  (min idx members-with-extra)))
+             (define num
+               (if (< idx members-with-extra)
+                   (add1 partitions-per-member)
+                   partitions-per-member))
+             (define partitions
+               (take (drop pids pos) num))
+             (hash-update assignments member-id (λ (t&ps) (hash-set t&ps topic partitions)) hash))))])
+
+    (range)))
+
+(module+ test
+  (require rackunit)
+  (check-equal?
+   (assignor-assign range null (list (metadata "m1" 0 '("t1" "t2") #"")))
+   (hash
+    "m1" (hash "t1" null
+               "t2" null)))
+  (check-equal?
+   (assignor-assign
+    range
+    (list
+     (topic-partition "t1" 0))
+    (list
+     (metadata "m1" 0 '("t1") #"")
+     (metadata "m2" 0 '("t1") #"")
+     (metadata "m3" 0 '("t1") #"")))
+   (hash "m1" (hash "t1" '(0))
+         "m2" (hash "t1" null)
+         "m3" (hash "t1" null)))
+  (check-equal?
+   (assignor-assign
+    range
+    (list
+     (topic-partition "t1" 0)
+     (topic-partition "t1" 1)
+     (topic-partition "t1" 2))
+    (list
+     (metadata "m1" 0 '("t1") #"")
+     (metadata "m2" 0 '("t1") #"")))
+   (hash
+    "m1" (hash "t1" '(0 1))
+    "m2" (hash "t1" '(2))))
+  (check-equal?
+   (assignor-assign
+    range
+    (list
+     (topic-partition "t1" 0)
+     (topic-partition "t1" 1)
+     (topic-partition "t1" 2)
+     (topic-partition "t2" 0)
+     (topic-partition "t2" 1)
+     (topic-partition "t2" 2)
+     (topic-partition "t3" 0)
+     (topic-partition "t3" 1)
+     (topic-partition "t3" 2)
+     (topic-partition "t3" 3))
+    (list
+     (metadata "m1" 0 '("t1" "t2") #"")
+     (metadata "m2" 0 '("t1" "t2" "t3") #"")))
+   (hash
+    "m1" (hash
+          "t1" '(0 1)
+          "t2" '(0 1))
+    "m2" (hash
+          "t1" '(2)
+          "t2" '(2)
+          "t3" '(0 1 2 3)))))
+
 
 ;; round robin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -56,12 +172,7 @@
          "roundrobin")
 
        (define (assignor-metadata _ topics)
-         (with-output-bytes
-           (cproto:un-MemberMetadata
-            `((Version_1 . 0)
-              (ArrayLen_1 . ,(length topics))
-              (TopicName_1 . ,topics)
-              (Data_1 . #"")))))
+         (enc-member-metadata topics))
 
        (define (assignor-assign _ topic-partitions metas)
          (define meta-by-id
@@ -94,7 +205,6 @@
     (round-robin)))
 
 (module+ test
-  (require rackunit)
   (check-equal?
    (assignor-assign round-robin null (list (metadata "m1" 0 '("t1" "t2") #"")))
    (hash))
