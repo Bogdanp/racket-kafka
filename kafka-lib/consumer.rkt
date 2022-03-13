@@ -51,8 +51,20 @@
                        #:reset-strategy [offset-reset-strategy 'earliest]
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)
+  (define heartbeat-ch (make-channel))
   (define the-consumer
-    (consumer client group-id 0 #f topics #f (make-channel) #f assignors offset-reset-strategy session-timeout-ms))
+    (consumer
+     client
+     group-id
+     0            ;; generation-id
+     #f           ;; member-id
+     topics
+     #f           ;; topic-partitions
+     heartbeat-ch
+     #f           ;; heartbeat-thd
+     assignors
+     offset-reset-strategy
+     session-timeout-ms))
   (begin0 the-consumer
     (join-group! the-consumer)
     (start-heartbeat-thd! the-consumer)))
@@ -64,8 +76,8 @@
     (lambda (e)
       (cond
         [(exn:fail:kafka:server? e)
-         (case (exn:fail:kafka:server-code e)
-           [(25 27) ;; unknown member id, rebalance in progress
+         (case (error-code-symbol (exn:fail:kafka:server-code e))
+           [(unknown-member-id rebalance-in-progress)
             (join-group! c)
             (start-heartbeat-thd! c)
             (values 'rebalance (consumer-topic-partitions c))]
@@ -132,10 +144,9 @@
               [part (in-list partitions)])
          (define pid (CommitPartitionResult-id part))
          (define err (CommitPartitionResult-error-code part))
-         (case err
-           [(0) ;; no error
-            (void)]
-           [(25) ;; unknown member id
+         (case (error-code-symbol err)
+           [(no-error) (void)]
+           [(unknown-member-id rebalance-in-progress)
             (log-kafka-warning "commit on (~a, ~a) ignored due to rebalance" topic pid)]
            [else
             (raise-server-error err)])))))))

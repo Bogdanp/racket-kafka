@@ -1,5 +1,9 @@
 #lang racket/base
 
+(require (for-syntax racket/base
+                     racket/string
+                     syntax/parse))
+
 (provide
  exn:fail:kafka?
  exn:fail:kafka:client?
@@ -8,7 +12,9 @@
  client-error
  raise-client-error
  server-error
- raise-server-error)
+ raise-server-error
+ error-code-symbol
+ error-code-message)
 
 (struct exn:fail:kafka exn:fail ())
 (struct exn:fail:kafka:server exn:fail:kafka (code))
@@ -30,13 +36,22 @@
 (define (raise-server-error . args)
   (raise (apply server-error args)))
 
-(define-syntax-rule (define-error-codes id [code message] ...)
-  (define (id c)
-    (case c
-      [(code) message] ...
-      [else "unknown error code"])))
+(define-syntax (define-error-codes stx)
+  (syntax-parse stx
+    [(_ sym-id message-id [code:number message:str] ...+)
+     #:with (sym ...) (for/list ([message-stx (syntax-e #'(message ...))])
+                        (datum->syntax message-stx (string->symbol (string-replace (syntax->datum message-stx) " " "-"))))
+     #'(begin
+         (define (sym-id c)
+           (case c
+             [(code) 'sym] ...
+             [else 'unknown]))
+         (define (message-id c)
+           (case c
+             [(code) message] ...
+             [else "unknown error code"])))]))
 
-(define-error-codes error-code-message
+(define-error-codes error-code-symbol error-code-message
   [-1  "unknown server error"]
   [0   "no error"]
   [1   "offset out of range"]
