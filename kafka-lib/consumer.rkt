@@ -149,27 +149,33 @@
   (define thd
     (thread
      (lambda ()
-       (define interval
-         (/ interval-ms 1000.0))
-       (define ch
-         (consumer-heartbeat-ch c))
-       (with-handlers ([exn:fail? (λ (e) (channel-put ch e))]
-                       [exn:break? (λ (_) (log-kafka-debug "stopping heartbeat thread"))])
-         (define group-id (consumer-group-id c))
-         (define generation-id (consumer-generation-id c))
-         (define member-id (consumer-member-id c))
+       (define group-id (consumer-group-id c))
+       (define generation-id (consumer-generation-id c))
+       (define member-id (consumer-member-id c))
+       (define ch (consumer-heartbeat-ch c))
+       (with-handlers ([exn:fail?
+                        (lambda (e)
+                          (log-kafka-debug "heartbeat error: ~a" (exn-message e))
+                          (channel-put ch e))])
          (define conn (get-coordinator c))
          (let loop ()
-           (sleep interval)
-           (log-kafka-debug
-            "sending heartbeat~n  group-id: ~s~n  generation-id: ~s~n  member-id: ~s"
-            group-id generation-id member-id)
-           (sync (make-Heartbeat-evt conn group-id generation-id member-id))
-           (loop))))))
+           (sync
+            (handle-evt
+             (thread-receive-evt)
+             (lambda (_)
+               (log-kafka-debug "heartbeat thread stopped")))
+            (handle-evt
+             (alarm-evt (+ (current-inexact-milliseconds) interval-ms))
+             (lambda (_)
+               (log-kafka-debug
+                "sending heartbeat~n  group-id: ~s~n  generation-id: ~s~n  member-id: ~s"
+                group-id generation-id member-id)
+               (sync (make-Heartbeat-evt conn group-id generation-id member-id))
+               (loop)))))))))
   (set-consumer-heartbeat-thd! c thd))
 
 (define (stop-heartbeat-thd! c)
-  (break-thread (consumer-heartbeat-thd c)))
+  (thread-send (consumer-heartbeat-thd c) '(stop)))
 
 (define (join-group! c)
   (define conn (get-coordinator c))
