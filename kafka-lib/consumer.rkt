@@ -40,7 +40,8 @@
    [member-id #:mutable]
    [topics #:mutable]
    [topic-partitions #:mutable]
-   heartbeat-ch
+   heartbeat-in-ch
+   heartbeat-out-ch
    [heartbeat-thd #:mutable]
    assignors
    offset-reset-strategy
@@ -51,7 +52,8 @@
                        #:reset-strategy [offset-reset-strategy 'earliest]
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)
-  (define heartbeat-ch (make-channel))
+  (define heartbeat-in-ch (make-channel))
+  (define heartbeat-out-ch (make-channel))
   (define the-consumer
     (consumer
      client
@@ -60,7 +62,8 @@
      #f           ;; member-id
      topics
      #f           ;; topic-partitions
-     heartbeat-ch
+     heartbeat-in-ch
+     heartbeat-out-ch
      #f           ;; heartbeat-thd
      assignors
      offset-reset-strategy
@@ -72,7 +75,7 @@
 (define (consume-evt c [timeout 1000])
   (choice-evt
    (handle-evt
-    (consumer-heartbeat-ch c)
+    (consumer-heartbeat-out-ch c)
     (lambda (e)
       (cond
         [(exn:fail:kafka:server? e)
@@ -163,30 +166,45 @@
        (define group-id (consumer-group-id c))
        (define generation-id (consumer-generation-id c))
        (define member-id (consumer-member-id c))
-       (define ch (consumer-heartbeat-ch c))
+       (define in-ch (consumer-heartbeat-in-ch c))
+       (define out-ch (consumer-heartbeat-out-ch c))
        (with-handlers ([exn:fail?
                         (lambda (e)
                           (log-kafka-debug "heartbeat error: ~a" (exn-message e))
-                          (channel-put ch e))])
+                          (sync
+                           (handle-evt in-ch void)
+                           (channel-put-evt out-ch e)))])
          (define conn (get-coordinator c))
-         (let loop ()
+         (let loop ([pending-evt #f])
            (sync
-            (handle-evt
-             (thread-receive-evt)
-             (lambda (_)
-               (log-kafka-debug "heartbeat thread stopped")))
-            (handle-evt
-             (alarm-evt (+ (current-inexact-milliseconds) interval-ms))
-             (lambda (_)
-               (log-kafka-debug
-                "sending heartbeat~n  group-id: ~s~n  generation-id: ~s~n  member-id: ~s"
-                group-id generation-id member-id)
-               (sync (make-Heartbeat-evt conn group-id generation-id member-id))
-               (loop)))))))))
+            (handle-evt in-ch void)
+            (if pending-evt
+                (handle-evt
+                 pending-evt
+                 (lambda (_res)
+                   (log-kafka-debug
+                    "heartbeat ok~n  group-id: ~s~n  generation-id: ~s~n  member-id: ~s"
+                    group-id generation-id member-id)
+                   (loop #f)))
+                (handle-evt
+                 (alarm-evt (+ (current-inexact-milliseconds) interval-ms))
+                 (lambda (_)
+                   (log-kafka-debug
+                    "sending heartbeat~n  group-id: ~s~n  generation-id: ~s~n  member-id: ~s"
+                    group-id generation-id member-id)
+                   (loop (make-Heartbeat-evt conn group-id generation-id member-id))))))))
+       (log-kafka-debug "heartbeat thread stopped"))))
   (set-consumer-heartbeat-thd! c thd))
 
 (define (stop-heartbeat-thd! c)
-  (thread-send (consumer-heartbeat-thd c) '(stop)))
+  (define thd (consumer-heartbeat-thd c))
+  (define ch (consumer-heartbeat-in-ch c))
+  (sync
+   (thread-dead-evt thd)
+   (handle-evt
+    (channel-put-evt ch '(stop))
+    (lambda (_)
+      (sync thd)))))
 
 (define (join-group! c)
   (define conn (get-coordinator c))
