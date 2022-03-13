@@ -21,7 +21,8 @@ It is a work in progress, so expect breaking changes.
 @deftech{Clients} transparently pool connections to brokers within a
 cluster.  Connections are leased from the pool in order of least
 in-progress requests.  Reconnections are handled transparently, and
-connection errors bubble up to the caller.
+connection errors bubble up to the caller.  Clients are thread-safe,
+but they may not be shared between @tech{consumers}.
 
 @defproc[(client? [v any/c]) boolean?]{
   Returns @racket[#t] when @racket[v] is a @tech{client}.
