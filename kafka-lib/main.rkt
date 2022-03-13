@@ -14,6 +14,9 @@
   [exn:fail:kafka? (-> any/c boolean?)]
   [exn:fail:kafka:client? (-> any/c boolean?)]
   [exn:fail:kafka:server? (-> any/c boolean?)]
+  [exn:fail:kafka:server-code (-> exn:fail:kafka:server? exact-integer?)]
+  [error-code-symbol (-> exact-integer? symbol?)]
+
   [current-client-id (parameter/c string?)]
   [client? (-> any/c boolean?)]
   [make-client (->* ()
