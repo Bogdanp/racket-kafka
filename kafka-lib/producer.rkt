@@ -5,6 +5,7 @@
          racket/port
          "private/batch.rkt"
          "private/client.rkt"
+         "private/connection.rkt"
          "private/error.rkt"
          "private/serde.rkt")
 
@@ -274,8 +275,15 @@
          (when (exn:fail? res-or-exn)
            (raise res-or-exn))))))
   (will-register
-   executor res-evt
-   (λ (_) (set-Req-nack! res always-evt)))
+   executor
+   res-evt
+   (lambda (_)
+     ;; The `handle-evt' may be GC'd as soon as its handler procedure
+     ;; finishes, so we have to take care not to mutate the nack in
+     ;; that case, lest we cause a deadlock.
+     (unless (Req-nack res)
+       (log-kafka-debug "ProduceRes garbage collected: ~e" res)
+       (set-Req-nack! res always-evt))))
   (values res res-evt))
 
 (define executor
