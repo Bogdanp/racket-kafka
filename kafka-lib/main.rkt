@@ -2,6 +2,7 @@
 
 (require openssl
          racket/contract
+         racket/string
          sasl
          "private/client.rkt"
          "private/connection.rkt"
@@ -17,10 +18,10 @@
   [exn:fail:kafka:server-code (-> exn:fail:kafka:server? exact-integer?)]
   [error-code-symbol (-> exact-integer? symbol?)]
 
-  [current-client-id (parameter/c string?)]
   [client? (-> any/c boolean?)]
   [make-client (->* ()
-                    (#:bootstrap-host string?
+                    (#:id non-empty-string?
+                     #:bootstrap-host string?
                      #:bootstrap-port (integer-in 0 65535)
                      #:sasl-mechanism&ctx (or/c
                                            #f

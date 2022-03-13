@@ -14,19 +14,21 @@
  disconnect-all)
 
 (struct client
-  (sasl-mechanism&ctx
+  (id
+   sasl-mechanism&ctx
    ssl-ctx
    brokers
    connections-box
    update-connections-box))
 
 (define (make-client
+         #:id [id "racket-kafka"]
          #:bootstrap-host [host "127.0.0.1"]
          #:bootstrap-port [port 9092]
          #:sasl-mechanism&ctx [sasl-mechanism&ctx #f]
          #:ssl-ctx [ssl-ctx #f])
   (define bootstrap-conn
-    (connect host port ssl-ctx))
+    (connect id host port ssl-ctx))
   (when sasl-mechanism&ctx
     (apply authenticate bootstrap-conn sasl-mechanism&ctx))
   (define brokers
@@ -39,7 +41,7 @@
     (box (hasheqv)))
   (define update-connections-box
     (make-box-update-proc connections-box))
-  (client sasl-mechanism&ctx ssl-ctx brokers connections-box update-connections-box))
+  (client id sasl-mechanism&ctx ssl-ctx brokers connections-box update-connections-box))
 
 (define (get-connection c)
   (define conns (drop-disconnected c))
@@ -80,6 +82,7 @@
   (define node-id (BrokerMetadata-node-id broker))
   (define conn
     (connect
+     (client-id c)
      (BrokerMetadata-host broker)
      (BrokerMetadata-port broker)
      (client-ssl-ctx c)))

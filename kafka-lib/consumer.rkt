@@ -170,7 +170,7 @@
        (define out-ch (consumer-heartbeat-out-ch c))
        (with-handlers ([exn:fail?
                         (lambda (e)
-                          (log-kafka-debug "heartbeat error: ~a" (exn-message e))
+                          (log-kafka-debug "heartbeat: ~a" (exn-message e))
                           (sync
                            (handle-evt in-ch void)
                            (channel-put-evt out-ch e)))])

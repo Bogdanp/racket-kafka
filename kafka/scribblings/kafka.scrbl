@@ -6,6 +6,7 @@
                      openssl
                      racket/base
                      racket/contract
+                     racket/string
                      sasl))
 
 @title{Kafka}
@@ -22,16 +23,12 @@ cluster.  Connections are leased from the pool in order of least
 in-progress requests.  Reconnections are handled transparently, and
 connection errors bubble up to the caller.
 
-@defparam[current-client-id client-id string? #:value "racket-kafka"]{
-  A parameter that controls the client ID reported to the Kafka broker
-  for every connection.
-}
-
 @defproc[(client? [v any/c]) boolean?]{
   Returns @racket[#t] when @racket[v] is a @tech{client}.
 }
 
-@defproc[(make-client [#:bootstrap-host host string? "127.0.0.1"]
+@defproc[(make-client [#:id id non-empty-string? "racket-kafka"]
+                      [#:bootstrap-host host string? "127.0.0.1"]
                       [#:bootstrap-port port (integer-in 0 65535) 9092]
                       [#:sasl-mechanism&ctx sasl-ctx (or/c #f
                                                            (list/c 'plain string?)

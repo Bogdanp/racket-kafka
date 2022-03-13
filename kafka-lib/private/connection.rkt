@@ -11,7 +11,6 @@
 ;; connection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
- current-client-id
  connection?
  connect
  connected?
@@ -19,12 +18,10 @@
  make-request-evt
  get-requests-in-flight)
 
-(define current-client-id
-  (make-parameter "racket-kafka"))
-
 (struct connection (ch mgr [versions #:mutable]))
 
-(define (connect [host "127.0.0.1"]
+(define (connect [client-id "racket-kafka"]
+                 [host "127.0.0.1"]
                  [port 9092]
                  [ssl-ctx #f])
   (define-values (in out)
@@ -32,7 +29,7 @@
         (ssl-connect host port ssl-ctx)
         (tcp-connect host port)))
   (define ch (make-channel))
-  (define mgr (thread/suspend-to-kill (make-manager in out ch)))
+  (define mgr (thread/suspend-to-kill (make-manager client-id in out ch)))
   (define conn (connection ch mgr (hasheqv)))
   (begin0 conn
     (set-connection-versions! conn (get-api-versions conn))))
@@ -79,9 +76,7 @@
       (current-continuation-marks))))
   (open-input-bytes bs))
 
-(define ((make-manager in out ch))
-  (define client-id
-    (current-client-id))
+(define ((make-manager client-id in out ch))
   (let loop ([s (make-state)])
     (apply
      sync
