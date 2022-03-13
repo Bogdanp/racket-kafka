@@ -79,21 +79,25 @@
            (cond
              [(= (length evts) 500)
               (time (for-each sync evts))
+              (printf "published 500~n")
               (loop n null)]
              [(< n N)
               (define produce-evt
                 (produce p t #"k" #"v" #:partition (modulo n 8)))
+              (sleep (/ (random 5) 1000.0))
               (loop (add1 n) (cons produce-evt evts))]
              [else
               (time (for-each sync evts))
+              (printf "publish done~n")
               (sync producer-ch)
               (disconnect-all k)])))))
 
-    (let loop ()
-      (define msg (channel-get msg-ch))
-      (set! msgs (cons msg msgs))
-      (when (< (length msgs) N)
-        (loop)))
+    (let loop ([n 0])
+      (when (zero? (modulo n 100))
+        (printf "received ~s~n" n))
+      (unless (= n N)
+        (set! msgs (cons (channel-get msg-ch) msgs))
+        (loop (add1 n))))
 
     (channel-put producer-ch '(stop))
     (thread-wait producer-thd)
