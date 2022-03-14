@@ -90,40 +90,39 @@
                  (define results-by-topic&pid
                    (for*/hash ([t (in-list (ProduceResponse-topics res))]
                                [p (in-list (ProduceResponseTopic-partitions t))])
-                     (define topic
-                       (ProduceResponseTopic-name t))
-                     (define pid
-                       (ProduceResponsePartition-id p))
-                     (define topic&pid
-                       (cons topic pid))
-                     (define error-code
-                       (ProduceResponsePartition-error-code p))
-                     (values
-                      topic&pid
-                      (if (not (zero? error-code))
-                          (server-error error-code)
-                          (make-RecordResult
-                           #:topic topic
-                           #:partition p)))))
+                     (define topic (ProduceResponseTopic-name t))
+                     (define pid (ProduceResponsePartition-id p))
+                     (define topic&pid (cons topic pid))
+                     (define error-code (ProduceResponsePartition-error-code p))
+                     (values topic&pid (if (not (zero? error-code))
+                                           (server-error error-code)
+                                           (make-RecordResult
+                                            #:topic topic
+                                            #:partition p)))))
                  (for/list ([r (in-list reqs)])
                    (cond
                      [(ProduceRes? r)
-                      (define topic&pid
-                        (cons (ProduceRes-topic r)
-                              (ProduceRes-pid r)))
+                      (define topic (ProduceRes-topic r))
+                      (define pid (ProduceRes-pid r))
+                      (define topic&pid (cons topic pid))
                       (define partition-res
-                        (hash-ref results-by-topic&pid topic&pid (λ ()
-                                                                   (make-RecordResult
-                                                                    #:topic (ProduceRes-topic r)
-                                                                    #:partition (make-ProduceResponsePartition
-                                                                                 #:error-code 0
-                                                                                 #:index (ProduceRes-pid r)
-                                                                                 #:offset -1)))))
+                        (hash-ref
+                         results-by-topic&pid
+                         topic&pid
+                         (λ ()
+                           (make-RecordResult
+                            #:topic topic
+                            #:partition (make-ProduceResponsePartition
+                                         #:id pid
+                                         #:error-code 0
+                                         #:offset -1)))))
                       (struct-copy ProduceRes r [res partition-res])]
                      [else r]))]))
             (loop
-             (state-unforce-flush
-              (add-state-reqs next-st ready-reqs)))]
+             (set-state-deadline
+              (state-unforce-flush
+               (add-state-reqs next-st ready-reqs))
+              (make-deadline-evt flush-interval-ms)))]
 
            [else
             (apply
