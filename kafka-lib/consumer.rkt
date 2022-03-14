@@ -41,7 +41,7 @@
    [topics #:mutable]
    [topic-partitions #:mutable]
    heartbeat-in-ch
-   heartbeat-out-ch
+   heartbeat-err-ch
    [heartbeat-thd #:mutable]
    assignors
    offset-reset-strategy
@@ -53,18 +53,18 @@
                        #:session-timeout-ms [session-timeout-ms 30000]
                        . topics)
   (define heartbeat-in-ch (make-channel))
-  (define heartbeat-out-ch (make-channel))
+  (define heartbeat-err-ch (make-channel))
   (define the-consumer
     (consumer
      client
      group-id
-     0            ;; generation-id
-     #f           ;; member-id
+     0 ;; generation-id
+     #f ;; member-id
      topics
-     #f           ;; topic-partitions
+     #f ;; topic-partitions
      heartbeat-in-ch
-     heartbeat-out-ch
-     #f           ;; heartbeat-thd
+     heartbeat-err-ch
+     #f ;; heartbeat-thd
      assignors
      offset-reset-strategy
      session-timeout-ms))
@@ -75,25 +75,22 @@
 (define (consume-evt c [timeout 1000])
   (choice-evt
    (handle-evt
-    (consumer-heartbeat-out-ch c)
+    (consumer-heartbeat-err-ch c)
     (lambda (e)
-      (cond
-        [(exn:fail:kafka:server? e)
-         (case (error-code-symbol (exn:fail:kafka:server-code e))
-           [(unknown-member-id rebalance-in-progress)
-            (join-group! c)
-            (start-heartbeat-thd! c)
-            (values 'rebalance (consumer-topic-partitions c))]
-           [else (raise e)])]
-        [else (raise e)])))
+      (case (and (exn:fail:kafka:server? e)
+                 (error-code-symbol (exn:fail:kafka:server-code e)))
+        [(unknown-member-id rebalance-in-progress)
+         (join-group! c)
+         (start-heartbeat-thd! c)
+         (values 'rebalance (consumer-topic-partitions c))]
+        [else
+         (raise e)])))
    (handle-evt
     (make-Fetch-evt
      (get-connection (consumer-client c))
      (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
        (values topic (for/list ([(pid offset) (in-hash pids)])
-                       (make-TopicPartition
-                        #:id pid
-                        #:offset offset))))
+                       (make-TopicPartition #:id pid #:offset offset))))
      timeout)
     (lambda (res)
       (define current-topic-partitions
@@ -139,9 +136,7 @@
       (consumer-member-id c)
       (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
         (values topic (for/list ([(pid offset) (in-hash partitions)])
-                        (make-CommitPartition
-                         #:id pid
-                         #:offset offset)))))
+                        (make-CommitPartition #:id pid #:offset offset)))))
      (lambda (res)
        (for* ([(topic partitions) (in-hash res)]
               [part (in-list partitions)])
@@ -167,14 +162,15 @@
        (define generation-id (consumer-generation-id c))
        (define member-id (consumer-member-id c))
        (define in-ch (consumer-heartbeat-in-ch c))
-       (define out-ch (consumer-heartbeat-out-ch c))
+       (define err-ch (consumer-heartbeat-err-ch c))
        (with-handlers ([exn:fail?
                         (lambda (e)
                           (log-kafka-debug "heartbeat: ~a" (exn-message e))
                           (sync
                            (handle-evt in-ch void)
-                           (channel-put-evt out-ch e)))])
-         (define conn (get-coordinator c))
+                           (channel-put-evt err-ch e)))])
+         (define conn
+           (get-coordinator c))
          (let loop ([pending-evt #f])
            (sync
             (handle-evt in-ch void)
@@ -214,19 +210,19 @@
       (make-Protocol
        #:name (assign:assignor-name assignor)
        #:metadata (assign:assignor-metadata assignor (consumer-topics c)))))
-  (define res
+  (define join-res
     (sync
      (make-JoinGroup-evt
       conn
       (consumer-group-id c)
       (consumer-sesion-timeout-ms c)
       "" "consumer" protocols)))
-  (set-consumer-generation-id! c (JoinGroupResponse-generation-id res))
-  (set-consumer-member-id! c (JoinGroupResponse-member-id res))
+  (set-consumer-generation-id! c (JoinGroupResponse-generation-id join-res))
+  (set-consumer-member-id! c (JoinGroupResponse-member-id join-res))
   (define leader?
     (equal?
-     (JoinGroupResponse-leader res)
-     (JoinGroupResponse-member-id res)))
+     (JoinGroupResponse-leader join-res)
+     (JoinGroupResponse-member-id join-res)))
   (define assignments
     (cond
       [leader?
@@ -235,10 +231,10 @@
           (λ (a)
             (equal?
              (assign:assignor-name a)
-             (JoinGroupResponse-protocol-name res)))
+             (JoinGroupResponse-protocol-name join-res)))
           assignors))
        (define member-metadata
-         (parse-member-metadata (JoinGroupResponse-members res)))
+         (parse-member-metadata (JoinGroupResponse-members join-res)))
        (define topic-partitions
          (get-topic-partitions conn member-metadata))
        (define member-assignments
@@ -275,8 +271,8 @@
     (sync
      (handle-evt
       (make-FetchOffsets-evt conn (consumer-group-id c) topics&partitions)
-      (lambda (res)
-        (for/hash ([(topic partitions) (in-hash res)])
+      (lambda (fetch-res)
+        (for/hash ([(topic partitions) (in-hash fetch-res)])
           (values topic (for/hash ([part (in-list partitions)])
                           (define pid (PartitionOffset/Group-id part))
                           (define err (PartitionOffset/Group-error-code part))
@@ -298,8 +294,8 @@
         (sync
          (handle-evt
           (make-ListOffsets-evt conn uncommitted-topic-partitions)
-          (lambda (res)
-            (for/hash ([(topic partitions) (in-hash res)])
+          (lambda (reset-res)
+            (for/hash ([(topic partitions) (in-hash reset-res)])
               (values topic (for/hash ([part (in-list partitions)])
                               (define pid (PartitionOffset-id part))
                               (define err (PartitionOffset-error-code part))

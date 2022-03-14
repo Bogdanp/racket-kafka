@@ -183,7 +183,7 @@ Consumers are not thread-safe.
   this value is @racket['earliest], the consumer will receive records
   starting from the beginning of each partition.  When this value is
   @racket['latest], it will receive records starting from the time
-  that it subscribes to the topic.
+  that it subscribes to each topic.
 }
 
 @(define sync-evt
