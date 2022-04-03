@@ -281,7 +281,7 @@
      ;; finishes, so we have to take care not to mutate the nack in
      ;; that case, lest we cause a deadlock.
      (unless (Req-nack res)
-       (log-kafka-debug "ProduceRes garbage collected: ~e" res)
+       (log-kafka-debug "ProduceRes GC: ~e" res)
        (set-Req-nack! res always-evt))))
   (values res res-evt))
 
