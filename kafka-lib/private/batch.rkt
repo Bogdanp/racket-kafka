@@ -187,7 +187,13 @@
        (OffsetDelta_1 . 1)
        (Key_1 . #"b")
        (Value_1 . #"2")
-       (Headers_1 (HeadersLen_1 . 0) (Header_1))))))
+       (Headers_1 (HeadersLen_1 . 0) (Header_1)))))
+
+  (test-case "large writes"
+    (define b (make-batch))
+    (batch-append! b #"a" (make-bytes (* 10 1024 1024) 65))
+    (batch-append! b #"b" (make-bytes (* 10 1024 1024) 65))
+    (check-true (> (batch-len b) (* 20 1024 1024)))))
 
 ;; TODO: Validate CRCs.
 (define header-len 49)
@@ -298,8 +304,9 @@
 
     [else
      (define bs (make-bytes (+ needed (* cap 2))))
-     (bytes-copy! bs dst 0 len)
+     (bytes-copy! bs 0 dst 0 len)
      (bytes-copy! bs len src start end)
+     (set-record-data-bs! rd bs)
      (set-record-data-len! rd (+ len needed))]))
 
 (define (open-output-record-data rd)
