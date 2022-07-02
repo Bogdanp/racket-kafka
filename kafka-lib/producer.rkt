@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/contract
+         racket/format
          racket/match
          racket/port
          "private/batch.rkt"
@@ -45,79 +46,73 @@
          (define t (hash-ref! batches topic make-hasheqv))
          (define b (hash-ref! t pid (λ () (make-batch #:compression compression))))
          (batch-append! b key value))
-       (define (flush?)
-         (define-values (bs sz)
-           (batch-stats batches))
-         (or (> bs max-batch-bytes)
-             (> sz max-batch-size)))
        (let loop ([st (make-state (make-deadline-evt flush-interval-ms))])
          (cond
-           [(or (state-force-flush? st) (flush?))
-            (define-values (bs sz)
-              (batch-stats batches))
-            (cond
-              [(zero? sz)
-               (loop
-                (set-state-deadline
-                 (state-unforce-flush st)
-                 (make-deadline-evt flush-interval-ms)))]
-              [else
-               (log-kafka-producer-debug "flushing ~a requests (~a bytes)" sz bs)
-               (define start-time (current-inexact-monotonic-milliseconds))
-               (define-values (next-st pending-reqs)
-                 (pop-state-pending-reqs st))
-               (define ready-reqs
-                 (with-handlers ([exn:fail?
-                                  (λ (err)
-                                    (for/list ([r (in-list pending-reqs)])
-                                      (if (ProduceRes? r)
-                                          (struct-copy ProduceRes r [res err])
-                                          r)))])
-                   (define evts
-                     (make-produce-evts
-                      client batches
-                      #:acks acks
-                      #:timeout-ms 30000))
-                   (define results-by-topic&pid
-                     (for*/hash ([evt (in-list evts)]
-                                 [res (in-value (sync evt))]
-                                 [t (in-list (ProduceResponse-topics res))]
-                                 [p (in-list (ProduceResponseTopic-partitions t))])
-                       (define topic (ProduceResponseTopic-name t))
-                       (define pid (ProduceResponsePartition-id p))
-                       (define topic&pid (cons topic pid))
-                       (define error-code (ProduceResponsePartition-error-code p))
-                       (values topic&pid (if (not (zero? error-code))
-                                             (server-error error-code)
-                                             (make-RecordResult
-                                              #:topic topic
-                                              #:partition p)))))
-                   (for/list ([r (in-list pending-reqs)])
-                     (cond
-                       [(ProduceRes? r)
-                        (define topic (ProduceRes-topic r))
-                        (define pid (ProduceRes-pid r))
-                        (define topic&pid (cons topic pid))
-                        (define partition-res
-                          (hash-ref
-                           results-by-topic&pid
-                           topic&pid
-                           (λ ()
-                             (make-RecordResult
-                              #:topic topic
-                              #:partition (make-ProduceResponsePartition
-                                           #:id pid
-                                           #:error-code 0
-                                           #:offset -1)))))
-                        (struct-copy ProduceRes r [res partition-res])]
-                       [else r]))))
-               (log-kafka-producer-debug "flush took ~ams" (- (current-inexact-monotonic-milliseconds) start-time))
-               (hash-clear! batches)
-               (loop
-                (set-state-deadline
-                 (state-unforce-flush
-                  (add-state-reqs next-st ready-reqs))
-                 (make-deadline-evt flush-interval-ms)))])]
+           [(or (state-force-flush? st)
+                (> (state-pending-bytes st) max-batch-bytes)
+                (> (state-pending-count st) max-batch-size))
+            (log-kafka-producer-debug
+             "flushing ~a messages (~a bytes)"
+             (state-pending-count st)
+             (state-pending-bytes st))
+            (define start-time (current-inexact-monotonic-milliseconds))
+            (define-values (next-st pending-reqs)
+              (pop-state-pending-reqs st))
+            (define ready-reqs
+              (with-handlers ([exn:fail?
+                               (λ (err)
+                                 (for/list ([r (in-list pending-reqs)])
+                                   (if (ProduceRes? r)
+                                       (struct-copy ProduceRes r [res err])
+                                       r)))])
+                (define evts
+                  (make-produce-evts
+                   client batches
+                   #:acks acks
+                   #:timeout-ms 30000))
+                (define results-by-topic&pid
+                  (for*/hash ([evt (in-list evts)]
+                              [res (in-value (sync evt))]
+                              [t (in-list (ProduceResponse-topics res))]
+                              [p (in-list (ProduceResponseTopic-partitions t))])
+                    (define topic (ProduceResponseTopic-name t))
+                    (define pid (ProduceResponsePartition-id p))
+                    (define topic&pid (cons topic pid))
+                    (define error-code (ProduceResponsePartition-error-code p))
+                    (values topic&pid (if (not (zero? error-code))
+                                          (server-error error-code)
+                                          (make-RecordResult
+                                           #:topic topic
+                                           #:partition p)))))
+                (for/list ([r (in-list pending-reqs)])
+                  (cond
+                    [(ProduceRes? r)
+                     (define topic (ProduceRes-topic r))
+                     (define pid (ProduceRes-pid r))
+                     (define topic&pid (cons topic pid))
+                     (define partition-res
+                       (hash-ref
+                        results-by-topic&pid
+                        topic&pid
+                        (λ ()
+                          (make-RecordResult
+                           #:topic topic
+                           #:partition (make-ProduceResponsePartition
+                                        #:id pid
+                                        #:error-code 0
+                                        #:offset -1)))))
+                     (struct-copy ProduceRes r [res partition-res])]
+                    [else r]))))
+            (define duration
+              (- (current-inexact-monotonic-milliseconds) start-time))
+            (log-kafka-producer-debug "flush took ~ams" (~r #:precision '(= 2) duration))
+            (hash-clear! batches)
+            (loop
+             (reset-state-pending-bytes&count
+              (set-state-deadline
+               (state-unforce-flush
+                (add-state-reqs next-st ready-reqs))
+               (make-deadline-evt flush-interval-ms))))]
 
            [else
             (apply
@@ -134,11 +129,16 @@
                    (match msg
                      [`(produce ,topic ,pid ,key, value ,nack ,req-ch)
                       (append! topic pid key value)
+                      (define bytes-size
+                        (+ (bytes-length key)
+                           (bytes-length value)))
                       (define-values (res res-evt)
                         (make-ProduceRes topic pid))
                       (loop
                        (add-state-pending-req
-                        (add-state-req st (ProduceReq nack req-ch res-evt))
+                        (add-state-req
+                         (incr-state-pending-bytes&count st bytes-size)
+                         (ProduceReq nack req-ch res-evt))
                         res))]
 
                      [`(stop ,nack ,res-ch)
@@ -210,11 +210,13 @@
    force-flush?
    deadline-evt
    pending-reqs
-   reqs)
+   reqs
+   pending-bytes
+   pending-count)
   #:transparent)
 
 (define (make-state deadline-evt)
-  (state #f #f deadline-evt null null))
+  (state #f #f deadline-evt null null 0 0))
 
 (define (set-state-deadline st deadline-evt)
   (struct-copy state st [deadline-evt deadline-evt]))
@@ -241,6 +243,16 @@
 
 (define (state-unforce-flush st)
   (struct-copy state st [force-flush? #f]))
+
+(define (incr-state-pending-bytes&count st bytes-amt [count-amt 1])
+  (struct-copy state st
+               [pending-bytes (+ (state-pending-bytes st) bytes-amt)]
+               [pending-count (+ (state-pending-count st) count-amt)]))
+
+(define (reset-state-pending-bytes&count st)
+  (struct-copy state st
+               [pending-bytes 0]
+               [pending-count 0]))
 
 
 ;; Req ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -293,15 +305,6 @@
           (loop)))))))
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (batch-stats batches)
-  (for*/fold ([bs 0]
-              [sz 0])
-             ([t (in-hash-values batches)]
-              [b (in-hash-values t)])
-    (values
-     (+ bs (batch-len b))
-     (+ sz (batch-size b)))))
 
 (define (make-deadline-evt ms)
   (alarm-evt (+ (current-inexact-milliseconds) ms)))
