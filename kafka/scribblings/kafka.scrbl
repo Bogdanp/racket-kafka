@@ -96,6 +96,7 @@ but they may not be shared between @tech{consumers}.
 @deftogether[(
   @defstruct[CreatedTopics ([topics (listof CreatedTopic?)]) #:omit-constructor]
   @defstruct[CreatedTopic ([error-code exact-nonnegative-integer?]
+                           [error-message (or/c #f string?)]
                            [name string?])
                           #:omit-constructor]
 )]{

@@ -296,6 +296,9 @@ MaxVersion            = i16be;
 CreateTopicsRequestV0  = CreateTopicsRequestsV0 TimeoutMs;
 CreateTopicsRequestsV0 = ArrayLen CreateTopicRequestV0{ArrayLen_1};
 CreateTopicRequestV0   = TopicName NumPartitions ReplicationFactor Assignments Configs;
+CreateTopicsRequestV1  = CreateTopicsRequestsV1 TimeoutMs ValidateOnly;
+CreateTopicsRequestsV1 = ArrayLen CreateTopicRequestV1{ArrayLen_1};
+CreateTopicRequestV1   = TopicName NumPartitions ReplicationFactor Assignments Configs;
 NumPartitions          = i32be;
 ReplicationFactor      = i16be;
 Assignments            = ArrayLen Assignment{ArrayLen_1};
@@ -306,10 +309,15 @@ Configs                = ArrayLen Config{ArrayLen_1};
 Config                 = ConfigName ConfigValue;
 ConfigName             = String;
 ConfigValue            = String;
+ValidateOnly           = u8;
 
 CreateTopicsResponseV0       = CreateTopicsResponseTopicsV0;
 CreateTopicsResponseTopicsV0 = ArrayLen CreateTopicsResponseTopicV0{ArrayLen_1};
 CreateTopicsResponseTopicV0  = TopicName ErrorCode;
+
+CreateTopicsResponseV1       = CreateTopicsResponseTopicsV1;
+CreateTopicsResponseTopicsV1 = ArrayLen CreateTopicsResponseTopicV1{ArrayLen_1};
+CreateTopicsResponseTopicV1  = TopicName ErrorCode ErrorMessage;
 
 
 ## DeleteTopics (code 20)

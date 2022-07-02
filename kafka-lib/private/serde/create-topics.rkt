@@ -5,6 +5,7 @@
 
 (define-record CreatedTopic
   ([error-code error-code/c]
+   [error-message (or/c #f string?)]
    [name string?]))
 
 (define-record CreatedTopics
@@ -13,17 +14,18 @@
 (define-record CreateTopic
   ([name string?]
    [partitions exact-positive-integer?]
-   [(replication-factor -1) (or/c -1 exact-positive-integer?)]
+   [(replication-factor 1) exact-positive-integer?]
    [(assignments (hasheqv)) (hash/c exact-nonnegative-integer? (listof exact-nonnegative-integer?))]
    [(configs (hash)) (hash/c string? string?)]))
 
 (define-request CreateTopics
   (topics
-   [timeout-ms 30000])
+   [timeout-ms 30000]
+   [validate-only? #f])
   #:code 19
-  #:version 0
-  #:response proto:CreateTopicsResponseV0
-  (lambda (topics timeout-ms)
+  #:version 1
+  #:response proto:CreateTopicsResponseV1
+  (lambda (topics timeout-ms validate-only?)
     (define topic-requests
       (for/list ([t (in-list topics)])
         (define assignments (CreateTopic-assignments t))
@@ -44,13 +46,15 @@
                                  (ConfigValue_1 . ,value)))))))))
 
     (with-output-bytes
-      (proto:un-CreateTopicsRequestV0
-       `((CreateTopicsRequestsV0_1 . ((ArrayLen_1             . ,(length topics))
-                                      (CreateTopicRequestV0_1 . ,topic-requests)))
-         (TimeoutMs_1 . ,timeout-ms)))))
+      (proto:un-CreateTopicsRequestV1
+       `((CreateTopicsRequestsV1_1 . ((ArrayLen_1             . ,(length topics))
+                                      (CreateTopicRequestV1_1 . ,topic-requests)))
+         (TimeoutMs_1 . ,timeout-ms)
+         (ValidateOnly_1 . ,(if validate-only? 1 0))))))
   (lambda (res)
     (CreatedTopics
-     (for/list ([t (in-list (ref 'CreateTopicsResponseTopicV0_1 res))])
+     (for/list ([t (in-list (ref 'CreateTopicsResponseTopicV1_1 res))])
        (make-CreatedTopic
         #:name (ref 'TopicName_1 t)
-        #:error-code (ref 'ErrorCode_1 t))))))
+        #:error-code (ref 'ErrorCode_1 t)
+        #:error-message (ref-string 'ErrorMessage_1 t))))))

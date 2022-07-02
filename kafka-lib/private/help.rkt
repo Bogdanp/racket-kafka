@@ -7,6 +7,7 @@
  null16
  null32
  ref
+ ref-string
  opt
  with-output-bytes)
 
@@ -23,6 +24,12 @@
      (cdr p)]
     [(id . args)
      (ref id (apply ref args))]))
+
+(define (ref-string . args)
+  (define res (apply ref args))
+  (cond
+    [(eq? res 'nil) #f]
+    [else res]))
 
 (define opt
   (case-lambda
