@@ -314,14 +314,10 @@
          #:acks acks
          #:timeout-ms timeout-ms)
   (let/ec esc
-    (let loop ([metadata (client-metadata client)]
-               [reloaded? #f])
-      (define nodes-by-topic&partition
-        (for*/hash ([t (in-list (Metadata-topics metadata))]
-                    [topic (in-value (TopicMetadata-name t))]
-                    [p (in-list (TopicMetadata-partitions t))]
-                    [pid (in-value (PartitionMetadata-id p))])
-          (values (cons topic pid) (PartitionMetadata-leader-id p))))
+    (let retry ([metadata (client-metadata client)]
+                [reloaded? #f])
+      (define nodes-by-topic&pid
+        (collect-nodes-by-topic&pid metadata (hash-keys batches)))
       (define topics-by-node
         (for*/fold ([data-by-node (hasheqv)])
                    ([(topic parts) (in-hash batches)]
@@ -329,11 +325,11 @@
           (define topic&pid (cons topic pid))
           (define node-id
             (hash-ref
-             nodes-by-topic&partition topic&pid
-             (λ ()
-               (if reloaded?
-                   (error 'produce "no partition ~a for topic '~a'" pid topic)
-                   (esc (loop (reload-metadata client) #t))))))
+             nodes-by-topic&pid
+             topic&pid
+             (lambda ()
+               (and (not reloaded?)
+                    (esc (retry (reload-metadata client) #t))))))
           (define node-topics (hash-ref data-by-node node-id hash))
           (define partition-data
             (make-PartitionData
@@ -348,11 +344,39 @@
             (λ (partitions)
               (cons partition-data partitions))
             null))))
+      ;; node-id may be #f when we couldn't find a node for a
+      ;; particular topic&pid combination, in which case we fake an
+      ;; error response.
       (for/list ([(node-id topics) (in-hash topics-by-node)])
-        (define conn (get-node-connection client node-id))
-        (define data
-          (for/list ([(topic partitions) (in-hash topics)])
-            (make-TopicData
-             #:name topic
-             #:partitions partitions)))
-        (make-Produce-evt conn data acks timeout-ms)))))
+        (cond
+          [node-id
+           (define conn (get-node-connection client node-id))
+           (define data
+             (for/list ([(topic partitions) (in-hash topics)])
+               (make-TopicData
+                #:name topic
+                #:partitions partitions)))
+           (make-Produce-evt conn data acks timeout-ms)]
+
+          [else
+           (pure-evt
+            (make-ProduceResponse
+             #:topics (for/list ([(topic partitions) (in-hash topics)])
+                        (make-ProduceResponseTopic
+                         #:name topic
+                         #:partitions (for/list ([p (in-list partitions)])
+                                        (make-ProduceResponsePartition
+                                         #:id (PartitionData-id p)
+                                         #:error-code 3
+                                         #:offset -1))))))])))))
+
+(define (collect-nodes-by-topic&pid metadata topics)
+  (for*/hash ([t (in-list (Metadata-topics metadata))]
+              [topic (in-value (TopicMetadata-name t))]
+              #:when (member topic topics string=?)
+              [p (in-list (TopicMetadata-partitions t))]
+              [pid (in-value (PartitionMetadata-id p))])
+    (values (cons topic pid) (PartitionMetadata-leader-id p))))
+
+(define (pure-evt v)
+  (handle-evt always-evt (λ (_) v)))
