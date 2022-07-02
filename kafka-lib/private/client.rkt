@@ -10,6 +10,7 @@
  client?
  make-client
  get-connection
+ get-controller-connection
  get-node-connection
  disconnect-all)
 
@@ -17,7 +18,7 @@
   (id
    sasl-mechanism&ctx
    ssl-ctx
-   brokers
+   metadata
    connections-box
    update-connections-box))
 
@@ -31,21 +32,18 @@
     (connect id host port ssl-ctx))
   (when sasl-mechanism&ctx
     (apply authenticate bootstrap-conn sasl-mechanism&ctx))
-  (define brokers
-    (Metadata-brokers
-     (sync (make-Metadata-evt bootstrap-conn null))))
+  (define metadata
+    (sync (make-Metadata-evt bootstrap-conn null)))
   (disconnect bootstrap-conn)
-  (when (null? brokers)
-    (error 'make-client "failed to discover any brokers"))
   (define connections-box
     (box (hasheqv)))
   (define update-connections-box
     (make-box-update-proc connections-box))
-  (client id sasl-mechanism&ctx ssl-ctx brokers connections-box update-connections-box))
+  (client id sasl-mechanism&ctx ssl-ctx metadata connections-box update-connections-box))
 
 (define (get-connection c)
   (define conns (drop-disconnected c))
-  (define brokers (client-brokers c))
+  (define brokers (Metadata-brokers (client-metadata c)))
   (define connected-node-ids (hash-keys conns))
   (define unconnected-brokers
     (for*/list ([b (in-list brokers)]
@@ -56,8 +54,21 @@
       (find-best-connection conns)
       (establish-new-connection c conns (random-ref unconnected-brokers))))
 
+(define (get-controller-connection c)
+  (define metadata (client-metadata c))
+  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b)
+                                        (Metadata-controller-id metadata)))
+                              (Metadata-brokers metadata)))
+  (unless maybe-broker
+    (raise-argument-error 'get-node-connection "controller node not found"))
+  (define conns
+    (drop-disconnected c))
+  (hash-ref conns
+            (BrokerMetadata-node-id maybe-broker)
+            (λ () (establish-new-connection c conns maybe-broker))))
+
 (define (get-node-connection c node-id)
-  (define brokers (client-brokers c))
+  (define brokers (Metadata-brokers (client-metadata c)))
   (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
   (unless maybe-broker
     (raise-argument-error 'get-node-connection "unknown node id" node-id))

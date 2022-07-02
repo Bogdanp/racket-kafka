@@ -44,22 +44,22 @@
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (get-metadata c . topics)
-  (sync (make-Metadata-evt (get-connection c) topics)))
+  (sync (make-Metadata-evt (get-controller-connection c) topics)))
 
 (define (create-topics c topic0 . topics)
-  (sync (make-CreateTopics-evt (get-connection c) (cons topic0 topics))))
+  (sync (make-CreateTopics-evt (get-controller-connection c) (cons topic0 topics))))
 
 (define (delete-topics c topic0 . topics)
-  (sync (make-DeleteTopics-evt (get-connection c) (cons topic0 topics))))
+  (sync (make-DeleteTopics-evt (get-controller-connection c) (cons topic0 topics))))
 
 (define (find-group-coordinator c group-id)
-  (sync (make-FindCoordinator-evt (get-connection c) group-id)))
+  (sync (make-FindCoordinator-evt (get-controller-connection c) group-id)))
 
 (define (describe-groups c . groups)
-  (sync (make-DescribeGroups-evt (get-connection c) groups)))
+  (sync (make-DescribeGroups-evt (get-controller-connection c) groups)))
 
 (define (list-groups c)
-  (sync (make-ListGroups-evt (get-connection c))))
+  (sync (make-ListGroups-evt (get-controller-connection c))))
 
 (define (list-offsets c topics)
-  (sync (make-ListOffsets-evt (get-connection c) topics)))
+  (sync (make-ListOffsets-evt (get-controller-connection c) topics)))
