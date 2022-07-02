@@ -5,7 +5,6 @@
          racket/port
          "private/batch.rkt"
          "private/client.rkt"
-         "private/connection.rkt"
          "private/error.rkt"
          "private/serde.rkt")
 
@@ -51,78 +50,74 @@
            (batch-stats batches))
          (or (> bs max-batch-bytes)
              (> sz max-batch-size)))
-       ; (listof Req?) -> (evt/c (cons/c (or/c exn? ProduceResponse?) (listof Req?)))
-       (define (make-flush-evt pending-reqs)
-         (define-values (_bs sz)
-           (batch-stats batches))
-         (define evt
-           (handle-evt
-            ; (evt/c (or/c exn? ProduceResponse?))
-            (if (zero? sz)
-                (pure-evt (make-ProduceResponse #:topics null))
-                (with-handlers ([exn:fail? pure-evt])
-                  (define conn
-                    (get-connection client))
-                  (make-produce-evt
-                   conn batches
-                   #:acks acks
-                   #:timeout-ms 30000)))
-            (lambda (res)
-              (cons res pending-reqs))))
-         (begin0 evt
-           (hash-clear! batches)))
        (let loop ([st (make-state (make-deadline-evt flush-interval-ms))])
          (cond
            [(or (state-force-flush? st) (flush?))
-            (define-values (next-st pending-reqs)
-              (pop-state-pending-reqs st))
-            (define flush-evt
-              (make-flush-evt pending-reqs))
-            (define ready-reqs
-              (match (sync flush-evt)
-                [(cons (? exn:fail? err) reqs)
-                 (for/list ([r (in-list reqs)])
-                   (if (ProduceRes? r)
-                       (struct-copy ProduceRes r [res err])
-                       r))]
-
-                [(cons res reqs)
-                 (define results-by-topic&pid
-                   (for*/hash ([t (in-list (ProduceResponse-topics res))]
-                               [p (in-list (ProduceResponseTopic-partitions t))])
-                     (define topic (ProduceResponseTopic-name t))
-                     (define pid (ProduceResponsePartition-id p))
-                     (define topic&pid (cons topic pid))
-                     (define error-code (ProduceResponsePartition-error-code p))
-                     (values topic&pid (if (not (zero? error-code))
-                                           (server-error error-code)
-                                           (make-RecordResult
-                                            #:topic topic
-                                            #:partition p)))))
-                 (for/list ([r (in-list reqs)])
-                   (cond
-                     [(ProduceRes? r)
-                      (define topic (ProduceRes-topic r))
-                      (define pid (ProduceRes-pid r))
-                      (define topic&pid (cons topic pid))
-                      (define partition-res
-                        (hash-ref
-                         results-by-topic&pid
-                         topic&pid
-                         (λ ()
-                           (make-RecordResult
-                            #:topic topic
-                            #:partition (make-ProduceResponsePartition
-                                         #:id pid
-                                         #:error-code 0
-                                         #:offset -1)))))
-                      (struct-copy ProduceRes r [res partition-res])]
-                     [else r]))]))
-            (loop
-             (set-state-deadline
-              (state-unforce-flush
-               (add-state-reqs next-st ready-reqs))
-              (make-deadline-evt flush-interval-ms)))]
+            (define-values (bs sz)
+              (batch-stats batches))
+            (cond
+              [(zero? sz)
+               (loop
+                (set-state-deadline
+                 (state-unforce-flush st)
+                 (make-deadline-evt flush-interval-ms)))]
+              [else
+               (log-kafka-producer-debug "flushing ~a requests (~a bytes)" sz bs)
+               (define start-time (current-inexact-monotonic-milliseconds))
+               (define-values (next-st pending-reqs)
+                 (pop-state-pending-reqs st))
+               (define ready-reqs
+                 (with-handlers ([exn:fail?
+                                  (λ (err)
+                                    (for/list ([r (in-list pending-reqs)])
+                                      (if (ProduceRes? r)
+                                          (struct-copy ProduceRes r [res err])
+                                          r)))])
+                   (define evts
+                     (make-produce-evts
+                      client batches
+                      #:acks acks
+                      #:timeout-ms 30000))
+                   (define results-by-topic&pid
+                     (for*/hash ([evt (in-list evts)]
+                                 [res (in-value (sync evt))]
+                                 [t (in-list (ProduceResponse-topics res))]
+                                 [p (in-list (ProduceResponseTopic-partitions t))])
+                       (define topic (ProduceResponseTopic-name t))
+                       (define pid (ProduceResponsePartition-id p))
+                       (define topic&pid (cons topic pid))
+                       (define error-code (ProduceResponsePartition-error-code p))
+                       (values topic&pid (if (not (zero? error-code))
+                                             (server-error error-code)
+                                             (make-RecordResult
+                                              #:topic topic
+                                              #:partition p)))))
+                   (for/list ([r (in-list pending-reqs)])
+                     (cond
+                       [(ProduceRes? r)
+                        (define topic (ProduceRes-topic r))
+                        (define pid (ProduceRes-pid r))
+                        (define topic&pid (cons topic pid))
+                        (define partition-res
+                          (hash-ref
+                           results-by-topic&pid
+                           topic&pid
+                           (λ ()
+                             (make-RecordResult
+                              #:topic topic
+                              #:partition (make-ProduceResponsePartition
+                                           #:id pid
+                                           #:error-code 0
+                                           #:offset -1)))))
+                        (struct-copy ProduceRes r [res partition-res])]
+                       [else r]))))
+               (log-kafka-producer-debug "flush took ~ams" (- (current-inexact-monotonic-milliseconds) start-time))
+               (hash-clear! batches)
+               (loop
+                (set-state-deadline
+                 (state-unforce-flush
+                  (add-state-reqs next-st ready-reqs))
+                 (make-deadline-evt flush-interval-ms)))])]
 
            [else
             (apply
@@ -207,9 +202,6 @@
        (when (exn:fail? res-or-exn)
          (raise res-or-exn))))))
 
-(define (pure-evt v)
-  (handle-evt always-evt (λ (_) v)))
-
 
 ;; State ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -281,7 +273,7 @@
      ;; finishes, so we have to take care not to mutate the nack in
      ;; that case, lest we cause a deadlock.
      (unless (Req-nack res)
-       (log-kafka-debug "ProduceRes GC: ~e" res)
+       #;(log-kafka-debug "ProduceRes GC: ~e" res)
        (set-Req-nack! res always-evt))))
   (values res res-evt))
 
@@ -295,7 +287,7 @@
       (let loop ()
         (with-handlers ([exn:fail?
                          (λ (e)
-                           (log-warning "will execution failed: ~a" (exn-message e))
+                           (log-kafka-producer-warning "will execution failed: ~a" (exn-message e))
                            (loop))])
           (will-execute executor)
           (loop)))))))
@@ -314,18 +306,43 @@
 (define (make-deadline-evt ms)
   (alarm-evt (+ (current-inexact-milliseconds) ms)))
 
-(define (make-produce-evt
-         conn batches
+;; TODO: Maybe cache the metadata and only refresh when we see new topics.
+(define (make-produce-evts
+         client batches
          #:acks acks
          #:timeout-ms timeout-ms)
-  (define data
-    (for/list ([(topic parts) (in-hash batches)])
-      (make-TopicData
-       #:name topic
-       #:partitions (for/list ([(pid b) (in-hash parts)])
-                      (make-PartitionData
-                       #:id pid
-                       #:batch (call-with-output-bytes
-                                (lambda (out)
-                                  (write-batch b out))))))))
-  (make-Produce-evt conn data acks timeout-ms))
+  (define ctl-conn (get-controller-connection client))
+  (define metadata (sync (make-Metadata-evt ctl-conn (hash-keys batches))))
+  (define nodes-by-topic&partition
+    (for*/hash ([t (in-list (Metadata-topics metadata))]
+                [topic (in-value (TopicMetadata-name t))]
+                [p (in-list (TopicMetadata-partitions t))]
+                [pid (in-value (PartitionMetadata-id p))])
+      (values (cons topic pid) (PartitionMetadata-leader-id p))))
+  (define topics-by-node
+    (for*/fold ([data-by-node (hasheqv)])
+               ([(topic parts) (in-hash batches)]
+                [(pid b) (in-hash parts)])
+      (define node-id (hash-ref nodes-by-topic&partition (cons topic pid)))
+      (define node-topics (hash-ref data-by-node node-id hash))
+      (define partition-data
+        (make-PartitionData
+         #:id pid
+         #:batch (call-with-output-bytes
+                  (lambda (out)
+                    (write-batch b out)))))
+      (hash-set
+       data-by-node node-id
+       (hash-update
+        node-topics topic
+        (λ (partitions)
+          (cons partition-data partitions))
+        null))))
+  (for/list ([(node-id topics) (in-hash topics-by-node)])
+    (define conn (get-node-connection client node-id))
+    (define data
+      (for/list ([(topic partitions) (in-hash topics)])
+        (make-TopicData
+         #:name topic
+         #:partitions partitions)))
+    (make-Produce-evt conn data acks timeout-ms)))
