@@ -12,7 +12,7 @@
 (define-record PartitionMetadata
   ([error-code error-code/c]
    [id exact-nonnegative-integer?]
-   [leader? boolean?]))
+   [leader-id exact-nonnegative-integer?]))
 
 (define-record TopicMetadata
   ([error-code error-code/c]
@@ -53,5 +53,5 @@
           (PartitionMetadata
            (ref 'PartitionErrorCode_1 part)
            (ref 'PartitionID_1 part)
-           (not (zero? (ref 'Leader_1 part)))))))
+           (ref 'Leader_1 part)))))
      (ref 'ControllerID_1 res))))
