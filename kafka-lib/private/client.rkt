@@ -111,19 +111,15 @@
     (client-connections-box c))
   (define updated-conns
     (hash-set conns node-id conn))
-  (let loop ()
-    (cond
-      [(box-cas! connections-box conns updated-conns)
-       (begin0 conn
-         (log-kafka-debug "established connection to node ~a" node-id))]
-      [(equal? (unbox connections-box) conns)
-       (log-kafka-debug "spurious error during cas, retrying")
-       (loop)]
-      [else
-       (log-kafka-debug "lost race while establishing connection, disconnecting")
-       (disconnect conn)
-       (log-kafka-debug "retrying get-connection")
-       (get-connection c)])))
+  (cond
+    [(box-cas! connections-box conns updated-conns)
+     (begin0 conn
+       (log-kafka-debug "established connection to node ~a" node-id))]
+    [else
+     (log-kafka-debug "lost race while establishing connection, disconnecting~n current-thread: ~a" (current-thread))
+     (disconnect conn)
+     (log-kafka-debug "retrying get-connection")
+     (get-connection c)]))
 
 (define (find-best-connection conns)
   (for/fold ([best #f]
