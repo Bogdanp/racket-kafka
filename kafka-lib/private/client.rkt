@@ -9,16 +9,18 @@
 (provide
  client?
  make-client
+ client-metadata
  get-connection
  get-controller-connection
  get-node-connection
+ reload-metadata
  disconnect-all)
 
 (struct client
   (id
    sasl-mechanism&ctx
    ssl-ctx
-   metadata
+   [metadata #:mutable]
    connections-box
    update-connections-box))
 
@@ -76,6 +78,12 @@
     (drop-disconnected c))
   (hash-ref conns node-id (λ ()
                             (establish-new-connection c conns maybe-broker))))
+
+(define (reload-metadata c)
+  (define ctl-conn (get-controller-connection c))
+  (define metadata (sync (make-Metadata-evt ctl-conn null)))
+  (begin0 metadata
+    (set-client-metadata! c metadata)))
 
 (define (disconnect-all c)
   (define connections-box (client-connections-box c))

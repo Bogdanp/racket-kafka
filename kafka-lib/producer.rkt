@@ -309,43 +309,50 @@
 (define (make-deadline-evt ms)
   (alarm-evt (+ (current-inexact-milliseconds) ms)))
 
-;; TODO: Maybe cache the metadata and only refresh when we see new topics.
 (define (make-produce-evts
          client batches
          #:acks acks
          #:timeout-ms timeout-ms)
-  (define ctl-conn (get-controller-connection client))
-  (define metadata (sync (make-Metadata-evt ctl-conn (hash-keys batches))))
-  (define nodes-by-topic&partition
-    (for*/hash ([t (in-list (Metadata-topics metadata))]
-                [topic (in-value (TopicMetadata-name t))]
-                [p (in-list (TopicMetadata-partitions t))]
-                [pid (in-value (PartitionMetadata-id p))])
-      (values (cons topic pid) (PartitionMetadata-leader-id p))))
-  (define topics-by-node
-    (for*/fold ([data-by-node (hasheqv)])
-               ([(topic parts) (in-hash batches)]
-                [(pid b) (in-hash parts)])
-      (define node-id (hash-ref nodes-by-topic&partition (cons topic pid)))
-      (define node-topics (hash-ref data-by-node node-id hash))
-      (define partition-data
-        (make-PartitionData
-         #:id pid
-         #:batch (call-with-output-bytes
-                  (lambda (out)
-                    (write-batch b out)))))
-      (hash-set
-       data-by-node node-id
-       (hash-update
-        node-topics topic
-        (λ (partitions)
-          (cons partition-data partitions))
-        null))))
-  (for/list ([(node-id topics) (in-hash topics-by-node)])
-    (define conn (get-node-connection client node-id))
-    (define data
-      (for/list ([(topic partitions) (in-hash topics)])
-        (make-TopicData
-         #:name topic
-         #:partitions partitions)))
-    (make-Produce-evt conn data acks timeout-ms)))
+  (let/ec esc
+    (let loop ([metadata (client-metadata client)]
+               [reloaded? #f])
+      (define nodes-by-topic&partition
+        (for*/hash ([t (in-list (Metadata-topics metadata))]
+                    [topic (in-value (TopicMetadata-name t))]
+                    [p (in-list (TopicMetadata-partitions t))]
+                    [pid (in-value (PartitionMetadata-id p))])
+          (values (cons topic pid) (PartitionMetadata-leader-id p))))
+      (define topics-by-node
+        (for*/fold ([data-by-node (hasheqv)])
+                   ([(topic parts) (in-hash batches)]
+                    [(pid b) (in-hash parts)])
+          (define topic&pid (cons topic pid))
+          (define node-id
+            (hash-ref
+             nodes-by-topic&partition topic&pid
+             (λ ()
+               (if reloaded?
+                   (error 'produce "no partition ~a for topic '~a'" pid topic)
+                   (esc (loop (reload-metadata client) #t))))))
+          (define node-topics (hash-ref data-by-node node-id hash))
+          (define partition-data
+            (make-PartitionData
+             #:id pid
+             #:batch (call-with-output-bytes
+                      (lambda (out)
+                        (write-batch b out)))))
+          (hash-set
+           data-by-node node-id
+           (hash-update
+            node-topics topic
+            (λ (partitions)
+              (cons partition-data partitions))
+            null))))
+      (for/list ([(node-id topics) (in-hash topics-by-node)])
+        (define conn (get-node-connection client node-id))
+        (define data
+          (for/list ([(topic partitions) (in-hash topics)])
+            (make-TopicData
+             #:name topic
+             #:partitions partitions)))
+        (make-Produce-evt conn data acks timeout-ms)))))
