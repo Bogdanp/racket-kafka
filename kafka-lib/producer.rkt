@@ -293,12 +293,9 @@
   (parameterize ([current-namespace (make-base-empty-namespace)])
     (lambda ()
       (let loop ()
-        (with-handlers ([exn:fail?
-                         (λ (e)
-                           (log-kafka-producer-warning "will execution failed: ~a" (exn-message e))
-                           (loop))])
-          (will-execute executor)
-          (loop)))))))
+        (with-handlers ([exn:fail? (λ (e) (log-kafka-producer-warning "will execution failed: ~a" (exn-message e)))])
+          (will-execute executor))
+        (loop))))))
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
