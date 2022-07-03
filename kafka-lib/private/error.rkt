@@ -14,7 +14,8 @@
  server-error
  raise-server-error
  error-code-symbol
- error-code-message)
+ error-code-message
+ make-error-code?)
 
 (struct exn:fail:kafka exn:fail ())
 (struct exn:fail:kafka:server exn:fail:kafka (code))
@@ -160,3 +161,10 @@
   [104 "inconsistent clusetr id"]
   [105 "transaction id not found"]
   [106 "fetch session topic id error"])
+
+(define ((make-error-code? sym-or-proc) e)
+  (and (exn:fail:kafka:server? e)
+       (let ([sym (error-code-symbol (exn:fail:kafka:server-code e))])
+         (if (procedure? sym-or-proc)
+             (sym-or-proc sym)
+             (eq? sym sym-or-proc)))))

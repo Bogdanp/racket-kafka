@@ -95,7 +95,12 @@
     (lambda (e)
       (case (and (exn:fail:kafka:server? e)
                  (error-code-symbol (exn:fail:kafka:server-code e)))
+        [(coordinator-load-in-progress coordinator-not-available not-coordinator)
+         (log-kafka-warning "heartbeat: coordinator changed, restarting")
+         (start-heartbeat-thd! c)
+         (values 'rebalance (consumer-topic-partitions c))]
         [(unknown-member-id rebalance-in-progress)
+         (log-kafka-warning "heartbeat: rebalance")
          (join-group! c)
          (start-heartbeat-thd! c)
          (values 'rebalance (consumer-topic-partitions c))]
@@ -142,28 +147,31 @@
       (values 'records records)))))
 
 (define (consumer-commit c)
-  (void
-   (sync
-    (handle-evt
-     (make-Commit-evt
-      (get-coordinator c)
-      (consumer-group-id c)
-      (consumer-generation-id c)
-      (consumer-member-id c)
-      (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
-        (values topic (for/list ([(pid offset) (in-hash partitions)])
-                        (make-CommitPartition #:id pid #:offset offset)))))
-     (lambda (res)
-       (for* ([(topic partitions) (in-hash res)]
-              [part (in-list partitions)])
-         (define pid (CommitPartitionResult-id part))
-         (define err (CommitPartitionResult-error-code part))
-         (case (error-code-symbol err)
-           [(no-error) (void)]
-           [(unknown-member-id rebalance-in-progress)
-            (log-kafka-warning "commit on (~a, ~a) ignored due to rebalance" topic pid)]
-           [else
-            (raise-server-error err)])))))))
+  (with-handlers* ([coordinator-error?
+                    (λ (_)
+                      (log-kafka-warning "coordinator has changed, retrying")
+                      (consumer-commit c))])
+    (define res
+      (sync
+       (make-Commit-evt
+        (get-coordinator c)
+        (consumer-group-id c)
+        (consumer-generation-id c)
+        (consumer-member-id c)
+        (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
+          (values topic (for/list ([(pid offset) (in-hash partitions)])
+                          (make-CommitPartition #:id pid #:offset offset)))))))
+    (for* ([(topic partitions) (in-hash res)]
+           [part (in-list partitions)])
+      (define pid (CommitPartitionResult-id part))
+      (define err (CommitPartitionResult-error-code part))
+      (case (error-code-symbol err)
+        [(no-error)
+         (void)]
+        [(unknown-member-id rebalance-in-progress)
+         (log-kafka-warning "commit on (~a, ~a) ignored due to rebalance" topic pid)]
+        [else
+         (raise-server-error err)]))))
 
 (define (consumer-stop c)
   (when (consumer-member-id c)
@@ -180,12 +188,12 @@
        (define member-id (consumer-member-id c))
        (define in-ch (consumer-heartbeat-in-ch c))
        (define err-ch (consumer-heartbeat-err-ch c))
-       (with-handlers ([exn:fail?
-                        (lambda (e)
-                          (log-kafka-debug "heartbeat: ~a" (exn-message e))
-                          (sync
-                           (handle-evt in-ch void)
-                           (channel-put-evt err-ch e)))])
+       (with-handlers* ([exn:fail?
+                         (lambda (e)
+                           (log-kafka-debug "heartbeat: ~a" (exn-message e))
+                           (sync
+                            (handle-evt in-ch void)
+                            (channel-put-evt err-ch e)))])
          (let loop ([pending-evt #f])
            (sync
             (handle-evt in-ch void)
@@ -414,3 +422,8 @@
      (if (equal? topic-a topic-b)
          (< pid-a pid-b)
          (string<? topic-a topic-b)))))
+
+(define coordinator-error?
+  (make-error-code?
+   (λ (sym)
+     (memq sym '(coordinator-load-in-progress coordinator-not-available not-coordinator)))))
