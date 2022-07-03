@@ -302,28 +302,35 @@
   (define metadata (reload-metadata (consumer-client c)))
   (define nodes-by-topic&pid
     (collect-nodes-by-topic&pid metadata (hash-keys uncommitted-topic-partitions)))
-  (define reset-topic-partitions
-    (for*/fold ([reset-topic-partitions (hash)])
+  (define uncommitted-topic-partitions-by-node
+    (for*/fold ([by-node (hasheqv)])
                ([(topic partitions) (in-hash uncommitted-topic-partitions)]
                 [(pid offset) (in-hash partitions)])
-      (define node-id (hash-ref nodes-by-topic&pid (cons topic pid)))
-      (define node-conn (get-node-connection (consumer-client c) node-id))
-      (define reset-res
-        (sync (make-ListOffsets-evt node-conn (hash topic (hasheqv pid offset)))))
-      (for*/fold ([reset-topic-partitions reset-topic-partitions])
-                 ([(topic partitions) (in-hash reset-res)]
-                  [part (in-list partitions)])
-        (define err (PartitionOffset-error-code part))
-        (unless (zero? err)
-          (raise-server-error err))
-        (define pid (PartitionOffset-id part))
-        (define offset (PartitionOffset-offset part))
-        (hash-update
-         reset-topic-partitions
-         topic
-         (λ (topic-partitions)
-           (hash-set topic-partitions pid offset))
-         hasheqv))))
+      (define topic&pid (cons topic pid))
+      (define node-id (hash-ref nodes-by-topic&pid topic&pid))
+      (define node-topics (hash-ref by-node node-id hash))
+      (define updated-node-topics
+        (hash-update node-topics topic (λ (topic-partitions)
+                                         (hash-set topic-partitions pid offset)) hasheqv))
+      (hash-set by-node node-id updated-node-topics)))
+  (define reset-topic-partitions
+    (for*/fold ([reset-topic-partitions (hash)])
+               ([(node-id topics) (in-hash uncommitted-topic-partitions-by-node)]
+                [conn (in-value (get-node-connection (consumer-client c) node-id))]
+                [res (in-value (sync (make-ListOffsets-evt conn topics)))]
+                [(topic partitions) (in-hash res)]
+                [p (in-list partitions)])
+      (define err (PartitionOffset-error-code p))
+      (unless (zero? err)
+        (raise-server-error err))
+      (define pid (PartitionOffset-id p))
+      (define offset (PartitionOffset-offset p))
+      (hash-update
+       reset-topic-partitions
+       topic
+       (λ (topic-partitions)
+         (hash-set topic-partitions pid offset))
+       hasheqv)))
   (define topic-partitions
     (hash-union
      #:combine/key
