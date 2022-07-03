@@ -74,6 +74,28 @@
     (start-heartbeat-thd! the-consumer)))
 
 (define (consume-evt c [timeout 1000])
+  (define nodes-by-topic&pid
+    (collect-nodes-by-topic&pid
+     (client-metadata (consumer-client c))
+     (hash-keys (consumer-topic-partitions c))))
+  (define node-ids
+    (for*/fold ([subset null] #:result (sort subset <))
+               ([(topic pids) (in-hash (consumer-topic-partitions c))]
+                [pid (in-hash-keys pids)])
+      (define node-id
+        (hash-ref nodes-by-topic&pid (cons topic pid)))
+      (if (memv node-id subset)
+          subset
+          (cons node-id subset))))
+  (define fetch-evt
+    (if (null? node-ids)
+        never-evt
+        (make-Fetch-evt
+         (get-connection (consumer-client c) node-ids)
+         (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
+           (values topic (for/list ([(pid offset) (in-hash pids)])
+                           (make-TopicPartition #:id pid #:offset offset))))
+         timeout)))
   (choice-evt
    (handle-evt
     (consumer-heartbeat-err-ch c)
@@ -87,12 +109,7 @@
         [else
          (raise e)])))
    (handle-evt
-    (make-Fetch-evt
-     (get-connection (consumer-client c))
-     (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-       (values topic (for/list ([(pid offset) (in-hash pids)])
-                       (make-TopicPartition #:id pid #:offset offset))))
-     timeout)
+    fetch-evt
     (lambda (res)
       (define current-topic-partitions
         (consumer-topic-partitions c))
@@ -234,35 +251,6 @@
     (equal?
      (JoinGroupResponse-leader join-res)
      (JoinGroupResponse-member-id join-res)))
-  (define assignments
-    (cond
-      [leader?
-       (define assignor
-         (findf
-          (λ (a)
-            (equal?
-             (assign:assignor-name a)
-             (JoinGroupResponse-protocol-name join-res)))
-          assignors))
-       (define member-metadata
-         (parse-member-metadata (JoinGroupResponse-members join-res)))
-       (define topic-partitions
-         (get-topic-partitions conn member-metadata))
-       (define member-assignments
-         (assign:assignor-assign assignor topic-partitions member-metadata))
-       (for/list ([(member-id topics) (in-hash member-assignments)])
-         (make-Assignment
-          #:member-id member-id
-          #:data (with-output-bytes
-                   (cproto:un-MemberAssignment
-                    `((Version_1 . 0)
-                      (ArrayLen_1 . ,(hash-count topics))
-                      (Assignment_1 . ,(for/list ([(topic pids) (in-hash topics)])
-                                         `((TopicName_1 . ,topic)
-                                           (ArrayLen_1 . ,(length pids))
-                                           (PartitionID_1 . ,pids))))
-                      (Data_1 . #""))))))]
-      [else null]))
   (define assignment-data
     (sync
      (make-SyncGroup-evt
@@ -270,7 +258,34 @@
       (consumer-group-id c)
       (consumer-generation-id c)
       (consumer-member-id c)
-      assignments)))
+      (cond
+        [leader?
+         (define assignor
+           (findf
+            (λ (a)
+              (equal?
+               (assign:assignor-name a)
+               (JoinGroupResponse-protocol-name join-res)))
+            assignors))
+         (define member-metadata
+           (parse-member-metadata (JoinGroupResponse-members join-res)))
+         (define topic-partitions
+           (get-topic-partitions conn member-metadata))
+         (define member-assignments
+           (assign:assignor-assign assignor topic-partitions member-metadata))
+         (for/list ([(member-id topics) (in-hash member-assignments)])
+           (make-Assignment
+            #:member-id member-id
+            #:data (with-output-bytes
+                     (cproto:un-MemberAssignment
+                      `((Version_1 . 0)
+                        (ArrayLen_1 . ,(hash-count topics))
+                        (Assignment_1 . ,(for/list ([(topic pids) (in-hash topics)])
+                                           `((TopicName_1 . ,topic)
+                                             (ArrayLen_1 . ,(length pids))
+                                             (PartitionID_1 . ,pids))))
+                        (Data_1 . #""))))))]
+        [else null]))))
   (define topics&partitions
     (call-with-input-bytes assignment-data
       (lambda (in)

@@ -43,17 +43,22 @@
     (make-box-update-proc connections-box))
   (client id sasl-mechanism&ctx ssl-ctx metadata connections-box update-connections-box))
 
-(define (get-connection c)
+(define (get-connection c [node-ids #f])
   (define conns (drop-disconnected c))
+  (define filtered-conns
+    (for/hasheqv ([(node-id conn) (in-hash conns)]
+                  #:when (if node-ids (memv node-id node-ids) #t))
+      (values node-id conn)))
   (define brokers (Metadata-brokers (client-metadata c)))
   (define connected-node-ids (hash-keys conns))
   (define unconnected-brokers
     (for*/list ([b (in-list brokers)]
                 [node-id (in-value (BrokerMetadata-node-id b))]
-                #:unless (memv node-id connected-node-ids))
+                #:unless (memv node-id connected-node-ids)
+                #:when (if node-ids (memv node-id node-ids) #t))
       b))
   (if (null? unconnected-brokers)
-      (find-best-connection conns)
+      (find-best-connection filtered-conns)
       (establish-new-connection c conns (random-ref unconnected-brokers))))
 
 (define (get-controller-connection c)
