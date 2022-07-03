@@ -74,28 +74,21 @@
     (start-heartbeat-thd! the-consumer)))
 
 (define (consume-evt c [timeout 1000])
+  (define current-topic-partitions
+    (consumer-topic-partitions c))
   (define nodes-by-topic&pid
     (collect-nodes-by-topic&pid
      (client-metadata (consumer-client c))
-     (hash-keys (consumer-topic-partitions c))))
+     (hash-keys current-topic-partitions)))
   (define node-ids
     (for*/fold ([subset null] #:result (sort subset <))
-               ([(topic pids) (in-hash (consumer-topic-partitions c))]
+               ([(topic pids) (in-hash current-topic-partitions)]
                 [pid (in-hash-keys pids)])
       (define node-id
         (hash-ref nodes-by-topic&pid (cons topic pid)))
       (if (memv node-id subset)
           subset
           (cons node-id subset))))
-  (define fetch-evt
-    (if (null? node-ids)
-        never-evt
-        (make-Fetch-evt
-         (get-connection (consumer-client c) node-ids)
-         (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-           (values topic (for/list ([(pid offset) (in-hash pids)])
-                           (make-TopicPartition #:id pid #:offset offset))))
-         timeout)))
   (choice-evt
    (handle-evt
     (consumer-heartbeat-err-ch c)
@@ -109,10 +102,15 @@
         [else
          (raise e)])))
    (handle-evt
-    fetch-evt
+    (if (null? node-ids)
+        never-evt
+        (make-Fetch-evt
+         (get-connection (consumer-client c) node-ids)
+         (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
+           (values topic (for/list ([(pid offset) (in-hash pids)])
+                           (make-TopicPartition #:id pid #:offset offset))))
+         timeout))
     (lambda (res)
-      (define current-topic-partitions
-        (consumer-topic-partitions c))
       (define records
         (for*/vector ([(topic partitions) (in-hash (FetchResponse-topics res))]
                       [p (in-list partitions)]
