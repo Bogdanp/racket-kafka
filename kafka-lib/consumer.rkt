@@ -8,6 +8,7 @@
          (prefix-in assign: "private/assignor.rkt")
          "private/batch.rkt"
          "private/client.rkt"
+         "private/common.rkt"
          "private/connection.rkt"
          "private/error.rkt"
          "private/help.rkt"
@@ -130,7 +131,7 @@
    (sync
     (handle-evt
      (make-Commit-evt
-      (get-connection (consumer-client c))
+      (get-coordinator c)
       (consumer-group-id c)
       (consumer-generation-id c)
       (consumer-member-id c)
@@ -155,6 +156,7 @@
     (void (leave-group! c))))
 
 (define (start-heartbeat-thd! c #:interval-ms [interval-ms 3000])
+  (define conn (get-coordinator c))
   (define thd
     (thread
      (lambda ()
@@ -169,8 +171,6 @@
                           (sync
                            (handle-evt in-ch void)
                            (channel-put-evt err-ch e)))])
-         (define conn
-           (get-coordinator c))
          (let loop ([pending-evt #f])
            (sync
             (handle-evt in-ch void)
@@ -267,7 +267,7 @@
           (define topic (ref 'TopicName_1 a))
           (define pids (ref 'PartitionID_1 a))
           (values topic pids)))))
-  (define commmitted-topic-partitions
+  (define committed-topic-partitions
     (sync
      (handle-evt
       (make-FetchOffsets-evt conn (consumer-group-id c) topics&partitions)
@@ -281,35 +281,47 @@
                           (values pid (PartitionOffset/Group-offset part)))))))))
   (define uncommitted-topic-partitions
     (for/fold ([topics (hash)])
-              ([(topic partitions) (in-hash commmitted-topic-partitions)])
+              ([(topic partitions) (in-hash committed-topic-partitions)])
       (define uncommitted-partitions
         (for/hash ([(pid offset) (in-hash partitions)] #:when (= offset -1))
           (values pid (consumer-offset-reset-strategy c))))
       (cond
         [(hash-empty? uncommitted-partitions) topics]
         [else (hash-set topics topic uncommitted-partitions)])))
+  (define metadata (reload-metadata (consumer-client c)))
+  (define nodes-by-topic&pid
+    (collect-nodes-by-topic&pid metadata (hash-keys uncommitted-topic-partitions)))
   (define reset-topic-partitions
-    (if (hash-empty? uncommitted-topic-partitions)
-        (hash)
-        (sync
-         (handle-evt
-          (make-ListOffsets-evt conn uncommitted-topic-partitions)
-          (lambda (reset-res)
-            (for/hash ([(topic partitions) (in-hash reset-res)])
-              (values topic (for/hash ([part (in-list partitions)])
-                              (define pid (PartitionOffset-id part))
-                              (define err (PartitionOffset-error-code part))
-                              (unless (zero? err)
-                                (raise-server-error err))
-                              (values pid (PartitionOffset-offset part))))))))))
+    (for*/fold ([reset-topic-partitions (hash)])
+               ([(topic partitions) (in-hash uncommitted-topic-partitions)]
+                [(pid offset) (in-hash partitions)])
+      (define node-id (hash-ref nodes-by-topic&pid (cons topic pid)))
+      (define node-conn (get-node-connection (consumer-client c) node-id))
+      (define reset-res
+        (sync (make-ListOffsets-evt node-conn (hash topic (hasheqv pid offset)))))
+      (for*/fold ([reset-topic-partitions reset-topic-partitions])
+                 ([(topic partitions) (in-hash reset-res)]
+                  [part (in-list partitions)])
+        (define err (PartitionOffset-error-code part))
+        (unless (zero? err)
+          (raise-server-error err))
+        (define pid (PartitionOffset-id part))
+        (define offset (PartitionOffset-offset part))
+        (hash-update
+         reset-topic-partitions
+         topic
+         (λ (topic-partitions)
+           (hash-set topic-partitions pid offset))
+         hasheqv))))
   (define topic-partitions
     (hash-union
-     #:combine/key (λ (_topic committed-partitions reset-partitions)
-                     (hash-union
-                      #:combine/key (λ (_pid _committed-offset reset-offset) reset-offset)
-                      committed-partitions
-                      reset-partitions))
-     commmitted-topic-partitions
+     #:combine/key
+     (λ (_topic committed-partitions reset-partitions)
+       (hash-union
+        #:combine/key (λ (_pid _committed-offset reset-offset) reset-offset)
+        committed-partitions
+        reset-partitions))
+     committed-topic-partitions
      reset-topic-partitions))
   (set-consumer-topic-partitions! c topic-partitions))
 
@@ -329,7 +341,7 @@
     (sync
      (handle-evt
       (make-FindCoordinator-evt
-       (get-connection client)
+       (get-controller-connection client)
        (consumer-group-id c))
       Coordinator-node-id)))
   (get-node-connection client coordinator-id))

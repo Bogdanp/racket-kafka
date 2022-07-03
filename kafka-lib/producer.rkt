@@ -6,6 +6,7 @@
          racket/port
          "private/batch.rkt"
          "private/client.rkt"
+         "private/common.rkt"
          "private/error.rkt"
          "private/serde.rkt")
 
@@ -79,29 +80,24 @@
                     (define pid (ProduceResponsePartition-id p))
                     (define topic&pid (cons topic pid))
                     (define error-code (ProduceResponsePartition-error-code p))
-                    (values topic&pid (if (not (zero? error-code))
-                                          (server-error error-code)
+                    (values topic&pid (if (zero? error-code)
                                           (make-RecordResult
                                            #:topic topic
-                                           #:partition p)))))
+                                           #:partition p)
+                                          (server-error error-code)))))
                 (for/list ([r (in-list pending-reqs)])
                   (cond
                     [(ProduceRes? r)
                      (define topic (ProduceRes-topic r))
                      (define pid (ProduceRes-pid r))
                      (define topic&pid (cons topic pid))
-                     (define partition-res
-                       (hash-ref
-                        results-by-topic&pid
-                        topic&pid
-                        (λ ()
-                          (make-RecordResult
-                           #:topic topic
-                           #:partition (make-ProduceResponsePartition
-                                        #:id pid
-                                        #:error-code 0
-                                        #:offset -1)))))
-                     (struct-copy ProduceRes r [res partition-res])]
+                     (define partition-res (hash-ref results-by-topic&pid topic&pid #f))
+                     (struct-copy ProduceRes r [res (or partition-res (make-RecordResult
+                                                                       #:topic topic
+                                                                       #:partition (make-ProduceResponsePartition
+                                                                                    #:id pid
+                                                                                    #:error-code 0
+                                                                                    #:offset -1)))])]
                     [else r]))))
             (define duration
               (- (current-inexact-monotonic-milliseconds) start-time))
@@ -369,14 +365,6 @@
                                          #:id (PartitionData-id p)
                                          #:error-code 3
                                          #:offset -1))))))])))))
-
-(define (collect-nodes-by-topic&pid metadata topics)
-  (for*/hash ([t (in-list (Metadata-topics metadata))]
-              [topic (in-value (TopicMetadata-name t))]
-              #:when (member topic topics string=?)
-              [p (in-list (TopicMetadata-partitions t))]
-              [pid (in-value (PartitionMetadata-id p))])
-    (values (cons topic pid) (PartitionMetadata-leader-id p))))
 
 (define (pure-evt v)
   (handle-evt always-evt (λ (_) v)))
