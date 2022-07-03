@@ -203,6 +203,17 @@
       (sync thd)))))
 
 (define (join-group! c)
+  (with-handlers* ([exn:fail:kafka:server?
+                    (λ (e)
+                      (case (exn:fail:kafka:server-code e)
+                        [(unknown-member-id rebalance-in-progress)
+                         (log-kafka-debug "retrying group join due to rebalance")
+                         (join-group! c)]
+                        [else
+                         (raise e)]))])
+    (do-join-group! c)))
+
+(define (do-join-group! c)
   (define conn (get-coordinator c))
   (define assignors (consumer-assignors c))
   (define protocols
