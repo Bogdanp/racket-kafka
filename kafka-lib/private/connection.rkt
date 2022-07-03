@@ -83,32 +83,35 @@
      (handle-evt
       (if (state-connected? s) in never-evt)
       (lambda (_)
-        (with-handlers ([exn:fail:network?
-                         (lambda (e)
-                           (log-kafka-error "connection failed: ~a" (exn-message e))
-                           (loop (set-state-disconnected s)))]
-                        [exn:fail?
-                         (lambda (e)
-                           (log-kafka-error "failed to process response: ~a" (exn-message e))
-                           (loop s))])
-          (define size-in (read-port 4 in))
-          (define size (proto:Size size-in))
-          (define resp-in (read-port size in))
-          (define resp-id (proto:CorrelationID resp-in))
-          (cond
-            [(find-state-req s resp-id)
-             => (λ (req)
-                  (define tags
-                    (and (KReq-flexible? req)
-                         (proto:Tags resp-in)))
-                  (define response
-                    ((KReq-parser req) resp-in))
-                  (define updated-req
-                    (struct-copy KReq req [res #:parent Req (KRes response tags)]))
-                  (loop (update-state-req s resp-id updated-req)))]
-            [else
-             (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id)
-             (loop s)]))))
+        (loop
+         (with-handlers ([exn:fail:network?
+                          (lambda (e)
+                            (log-kafka-error "connection failed: ~a" (exn-message e))
+                            (fail-pending-reqs
+                             (set-state-disconnected s)
+                             (client-error "disconnected")))]
+                         [exn:fail?
+                          (lambda (e)
+                            (begin0 s
+                              (log-kafka-error "failed to process response: ~a" (exn-message e))))])
+           (define size-in (read-port 4 in))
+           (define size (proto:Size size-in))
+           (define resp-in (read-port size in))
+           (define resp-id (proto:CorrelationID resp-in))
+           (cond
+             [(find-state-req s resp-id)
+              => (λ (req)
+                   (define tags
+                     (and (KReq-flexible? req)
+                          (proto:Tags resp-in)))
+                   (define response
+                     ((KReq-parser req) resp-in))
+                   (define updated-req
+                     (struct-copy KReq req [res #:parent Req (KRes response tags)]))
+                   (update-state-req s resp-id updated-req))]
+             [else
+              (begin0 s
+                (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id))])))))
      (handle-evt
       ch
       (lambda (msg)
@@ -128,36 +131,37 @@
 
           [`(request ,immed-response ,flexible? ,k ,v ,tags ,request-data ,parser ,nack ,ch)
            #:when (state-connected? s)
-           (with-handlers ([exn:fail?
-                            (lambda (err)
-                              (define req (Req nack ch err))
-                              (loop (add-state-req s req)))])
-             (define res
-               (if immed-response
-                   (KRes immed-response (hasheqv))
-                   pending))
-             (define req (KReq nack ch res flexible? parser))
-             (define header-data
-               (with-output-bytes
-                 ((if flexible?
-                      proto:un-RequestHeaderV2
-                      proto:un-RequestHeaderV1)
-                  `((APIKey_1 . ,k)
-                    (APIVersion_1 . ,v)
-                    (CorrelationID_1 . ,(state-next-id s))
-                    (ClientID_1 . ,client-id)
-                    (Tags_1 . ,tags)))))
-             (define size
-               (+ (bytes-length header-data)
-                  (bytes-length request-data)))
-             (proto:un-Size size out)
-             (write-bytes header-data out)
-             (write-bytes request-data out)
-             (flush-output out)
-             (loop (add-state-req s req)))]
+           (loop
+            (with-handlers ([exn:fail?
+                             (lambda (err)
+                               (define req (Req nack ch err))
+                               (add-state-req s req))])
+              (define res
+                (if immed-response
+                    (KRes immed-response (hasheqv))
+                    pending))
+              (define req (KReq nack ch res flexible? parser))
+              (define header-data
+                (with-output-bytes
+                  ((if flexible?
+                       proto:un-RequestHeaderV2
+                       proto:un-RequestHeaderV1)
+                   `((APIKey_1 . ,k)
+                     (APIVersion_1 . ,v)
+                     (CorrelationID_1 . ,(state-next-id s))
+                     (ClientID_1 . ,client-id)
+                     (Tags_1 . ,tags)))))
+              (define size
+                (+ (bytes-length header-data)
+                   (bytes-length request-data)))
+              (proto:un-Size size out)
+              (write-bytes header-data out)
+              (write-bytes request-data out)
+              (flush-output out)
+              (add-state-req s req)))]
 
           [`(request ,_ ,_ ,_ ,_ ,_ ,_ ,_ ,nack ,ch)
-           (define err (client-error "not connected"))
+           (define err (client-error "disconnected"))
            (define req (Req nack ch err))
            (loop (add-state-req s req))]
 
@@ -242,6 +246,14 @@
 
 (define (set-state-disconnected s)
   (struct-copy state s [connected? #f]))
+
+(define (fail-pending-reqs s err)
+  (struct-copy state s [reqs (for/hasheqv ([(id req) (in-hash (state-reqs s))])
+                               (define updated-req
+                                 (if (and (KReq? req) (pending? (Req-res req)))
+                                     (struct-copy KReq req [res #:parent Req err])
+                                     req))
+                               (values id updated-req))]))
 
 (define pending
   (gensym 'pending))
