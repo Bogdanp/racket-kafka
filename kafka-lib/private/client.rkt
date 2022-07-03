@@ -122,15 +122,19 @@
      (get-connection c)]))
 
 (define (find-best-connection conns)
-  (for/fold ([best #f]
+  (for/fold ([best null]
              [least-reqs +inf.0]
-             #:result best)
+             #:result (random-ref best))
             ([conn (in-hash-values conns)])
-    (define reqs (get-requests-in-flight conn))
-    #:final (zero? reqs)
-    (if (< reqs least-reqs)
-        (values conn reqs)
-        (values best least-reqs))))
+    (define reqs
+      (get-requests-in-flight conn))
+    (cond
+      [(= reqs least-reqs)
+       (values (cons conn best) least-reqs)]
+      [(< reqs least-reqs)
+       (values (list conn) reqs)]
+      [else
+       (values best least-reqs)])))
 
 (define (authenticate conn mechanism ctx)
   (sync (make-SaslHandshake-evt conn mechanism))
