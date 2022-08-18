@@ -62,14 +62,20 @@
   (res-bind
    (parse-varint32 in)
    (lambda (len)
-     (expect 'batch-bytes len in))))
+     (cond
+       [(= len -1) (ok 'nil)]
+       [else (expect 'batch-bytes len in)]))))
 
 (define (unparse-batch-bytes out bs)
-  (res-bind
-   (unparse-varint32 out (bytes-length bs))
-   (lambda (_)
-     (begin0 (ok bs)
-       (write-bytes bs out)))))
+  (cond
+    [(equal? bs 'nil)
+     (unparse-i32be out -1)]
+    [else
+     (res-bind
+      (unparse-varint32 out (bytes-length bs))
+      (lambda (_)
+        (begin0 (ok bs)
+          (write-bytes bs out))))]))
 
 (define (parse-compact-bytes in)
   (res-bind

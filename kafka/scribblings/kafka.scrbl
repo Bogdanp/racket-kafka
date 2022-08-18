@@ -246,7 +246,7 @@ Consumers are not thread-safe.
   Returns @racket[#t] when @racket[v] is a @tech{record}.
 }
 
-@defproc[(record-key [r record?]) bytes?]{
+@defproc[(record-key [r record?]) (or/c 'nil bytes?)]{
   Returns the record's key.
 }
 
