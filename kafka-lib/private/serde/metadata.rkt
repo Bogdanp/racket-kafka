@@ -7,7 +7,7 @@
   ([node-id exact-nonnegative-integer?]
    [host string?]
    [port port/c]
-   [rack string?]))
+   [rack (or/c 'nil string?)]))
 
 (define-record PartitionMetadata
   ([error-code error-code/c]
