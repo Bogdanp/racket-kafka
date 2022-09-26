@@ -29,6 +29,7 @@
                                            (list/c symbol? sasl-ctx?))
                      #:ssl-ctx (or/c #f ssl-client-context?))
                     client?)]
+  [client-metadata (-> client? Metadata?)]
   [disconnect-all (-> client? void?)]
   [get-metadata (-> client? string? ... Metadata?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
