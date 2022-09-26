@@ -2,6 +2,7 @@
 
 (require openssl
          racket/contract
+         racket/promise
          racket/string
          sasl
          "private/client.rkt"
@@ -60,7 +61,15 @@
   (sync (make-DescribeGroups-evt (get-controller-connection c) groups)))
 
 (define (list-groups c)
-  (sync (make-ListGroups-evt (get-controller-connection c))))
+  (define groupss
+    (for/list ([b (in-list (Metadata-brokers (client-metadata c)))])
+      (delay/thread
+       (define conn #f)
+       (dynamic-wind
+         (λ () (set! conn (get-node-connection/unmanaged c (BrokerMetadata-node-id b))))
+         (λ () (sync (make-ListGroups-evt conn)))
+         (λ () (disconnect conn))))))
+  (apply append (map force groupss)))
 
 (define (list-offsets c topics)
   (sync (make-ListOffsets-evt (get-controller-connection c) topics)))
