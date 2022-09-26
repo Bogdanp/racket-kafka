@@ -13,6 +13,7 @@
  get-connection
  get-controller-connection
  get-node-connection
+ get-node-connection/unmanaged
  reload-metadata
  disconnect-all)
 
@@ -84,6 +85,13 @@
   (hash-ref conns node-id (λ ()
                             (establish-new-connection c conns maybe-broker))))
 
+(define (get-node-connection/unmanaged c node-id)
+  (define brokers (Metadata-brokers (client-metadata c)))
+  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
+  (unless maybe-broker
+    (raise-argument-error 'get-node-connection "unknown node id" node-id))
+  (establish-new-connection/unmanaged c maybe-broker))
+
 (define (reload-metadata c)
   (define ctl-conn (get-controller-connection c))
   (define metadata (sync (make-Metadata-evt ctl-conn null)))
@@ -102,16 +110,20 @@
      (for/hasheqv ([(node-id conn) (in-hash conns)] #:when (connected? conn))
        (values node-id conn)))))
 
-(define (establish-new-connection c conns broker)
-  (define node-id (BrokerMetadata-node-id broker))
+(define (establish-new-connection/unmanaged c broker)
   (define conn
     (connect
      (client-id c)
      (BrokerMetadata-host broker)
      (BrokerMetadata-port broker)
      (client-ssl-ctx c)))
-  (when (client-sasl-mechanism&ctx c)
-    (apply authenticate conn (client-sasl-mechanism&ctx c)))
+  (begin0 conn
+    (when (client-sasl-mechanism&ctx c)
+      (apply authenticate conn (client-sasl-mechanism&ctx c)))))
+
+(define (establish-new-connection c conns broker)
+  (define node-id (BrokerMetadata-node-id broker))
+  (define conn (establish-new-connection/unmanaged c broker))
   (define connections-box
     (client-connections-box c))
   (define updated-conns
