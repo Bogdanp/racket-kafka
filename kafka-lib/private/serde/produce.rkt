@@ -50,7 +50,7 @@
 (define (enc-producev3 data acks timeout-ms)
   (with-output-bytes
     (proto:un-ProduceRequestV3
-     `((TransactionalID_1 . nil)
+     `((TransactionalID_1 . #f)
        (Acks_1 . ,(acks->integer acks))
        (TimeoutMs_1 . ,timeout-ms)
        (ArrayLen_1 . ,(length data))

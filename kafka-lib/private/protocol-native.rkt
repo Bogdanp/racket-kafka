@@ -44,12 +44,12 @@
    (parse-i32be in)
    (lambda (len)
      (cond
-       [(= len -1) (ok 'nil)]
+       [(= len -1) (ok #f)]
        [else (expect 'bytes len in)]))))
 
 (define (unparse-bytes out bs)
   (cond
-    [(equal? bs 'nil)
+    [(not bs)
      (unparse-i32be out -1)]
     [else
      (res-bind
@@ -63,12 +63,12 @@
    (parse-varint32 in)
    (lambda (len)
      (cond
-       [(= len -1) (ok 'nil)]
+       [(= len -1) (ok #f)]
        [else (expect 'batch-bytes len in)]))))
 
 (define (unparse-batch-bytes out bs)
   (cond
-    [(equal? bs 'nil)
+    [(not bs)
      (unparse-i32be out -1)]
     [else
      (res-bind
@@ -82,12 +82,12 @@
    (parse-uvarint32 in)
    (lambda (len)
      (cond
-       [(zero? len) (ok 'nil)]
+       [(zero? len) (ok #f)]
        [else (expect 'compact-bytes (sub1 len) in)]))))
 
 (define (unparse-compact-bytes out bs)
   (cond
-    [(equal? bs 'nil) (unparse-uvarint32 out 0)]
+    [(not bs) (unparse-uvarint32 out 0)]
     [else
      (res-bind
       (unparse-uvarint32 out (add1 (bytes-length bs)))
@@ -100,14 +100,14 @@
    (parse-i16be in)
    (lambda (len)
      (cond
-       [(= len -1) (ok 'nil)]
+       [(= len -1) (ok #f)]
        [else (res-bind
               (expect 'string len in)
               (compose1 ok bytes->string/utf-8))]))))
 
 (define (unparse-string out s)
   (cond
-    [(equal? s 'nil)
+    [(not s)
      (unparse-i16be out -1)]
     [else
      (define bs (string->bytes/utf-8 s))
@@ -138,7 +138,7 @@
    (parse-uvarint32 in)
    (lambda (len)
      (cond
-       [(zero? len) (ok 'nil)]
+       [(zero? len) (ok #f)]
        [else
         (res-bind
          (expect 'compact-string (sub1 len) in)
@@ -146,7 +146,7 @@
 
 (define (unparse-compact-string out s)
   (cond
-    [(equal? s 'nil) (unparse-uvarint32 out 0)]
+    [(not s) (unparse-uvarint32 out 0)]
     [else
      (define bs (string->bytes/utf-8 s))
      (res-bind

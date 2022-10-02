@@ -57,4 +57,4 @@
        (make-CreatedTopic
         #:name (ref 'TopicName_1 t)
         #:error-code (ref 'ErrorCode_1 t)
-        #:error-message (ref-string 'ErrorMessage_1 t))))))
+        #:error-message (ref 'ErrorMessage_1 t))))))
