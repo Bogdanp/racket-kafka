@@ -48,7 +48,7 @@
   (client manager-ch manager))
 
 (define (get-connection c [node-ids #f])
-  (force (send-manager c get-best-connection node-ids)))
+  (force (send c get-best-connection node-ids)))
 
 (define (get-controller-connection c)
   (define metadata
@@ -67,16 +67,16 @@
      (Metadata-brokers metadata)))
   (unless maybe-broker
     (raise-argument-error 'get-node-connection "node not found"))
-  (force (send-manager c get-connection maybe-broker)))
+  (force (send c get-connection maybe-broker)))
 
 (define (client-metadata c)
-  (send-manager c get-metadata))
+  (send c get-metadata))
 
 (define (reload-metadata c)
-  (send-manager c reload-metadata (get-controller-connection c)))
+  (send c reload-metadata (get-controller-connection c)))
 
 (define (disconnect-all c)
-  (send-manager c disconnect-all))
+  (send c disconnect-all))
 
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -209,7 +209,7 @@
          (match-define (req _ nack _) r)
          (handle-evt nack (λ (_) (state-remove-req st r)))))))))
 
-(define-syntax-rule (send-manager c id . args)
+(define-syntax-rule (send c id . args)
   (sync (make-manager-evt c 'id . args)))
 
 (define (make-manager-evt c id . args)
