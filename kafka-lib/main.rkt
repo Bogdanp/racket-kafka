@@ -64,11 +64,8 @@
   (define groupss
     (for/list ([b (in-list (Metadata-brokers (client-metadata c)))])
       (delay/thread
-       (define conn #f)
-       (dynamic-wind
-         (λ () (set! conn (get-node-connection/unmanaged c (BrokerMetadata-node-id b))))
-         (λ () (sync (make-ListGroups-evt conn)))
-         (λ () (disconnect conn))))))
+       (define node-id (BrokerMetadata-node-id b))
+       (sync (make-ListGroups-evt (get-node-connection c node-id))))))
   (apply append (map force groupss)))
 
 (define (list-offsets c topics)

@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require box-extra
+(require racket/match
+         racket/promise
          racket/random
          sasl
          "connection.rkt"
@@ -13,17 +14,13 @@
  get-connection
  get-controller-connection
  get-node-connection
- get-node-connection/unmanaged
  reload-metadata
  disconnect-all)
 
-(struct client
-  (id
-   sasl-mechanism&ctx
-   ssl-ctx
-   [metadata #:mutable]
-   connections-box
-   update-connections-box))
+
+;; API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct client (manager-ch manager))
 
 (define (make-client
          #:id [id "racket-kafka"]
@@ -31,125 +28,224 @@
          #:bootstrap-port [port 9092]
          #:sasl-mechanism&ctx [sasl-mechanism&ctx #f]
          #:ssl-ctx [ssl-ctx #f])
-  (define bootstrap-conn
-    (connect id host port ssl-ctx))
-  (when sasl-mechanism&ctx
-    (apply authenticate bootstrap-conn sasl-mechanism&ctx))
+  (define bootstrap-conn #f)
   (define metadata
-    (sync (make-Metadata-evt bootstrap-conn null)))
-  (disconnect bootstrap-conn)
-  (define connections-box
-    (box (hasheqv)))
-  (define update-connections-box
-    (make-box-update-proc connections-box))
-  (client id sasl-mechanism&ctx ssl-ctx metadata connections-box update-connections-box))
+    (dynamic-wind
+      (lambda ()
+        (set! bootstrap-conn (connect id host port ssl-ctx)))
+      (lambda ()
+        (when sasl-mechanism&ctx
+          (apply authenticate bootstrap-conn sasl-mechanism&ctx))
+        (sync (make-Metadata-evt bootstrap-conn null)))
+      (lambda ()
+        (disconnect bootstrap-conn))))
+  (define manager-ch
+    (make-channel))
+  (define manager
+    (thread/suspend-to-kill
+     (make-manager manager-ch id sasl-mechanism&ctx ssl-ctx metadata)))
+  (client manager-ch manager))
 
 (define (get-connection c [node-ids #f])
-  (define conns (drop-disconnected c))
-  (define filtered-conns
-    (for/hasheqv ([(node-id conn) (in-hash conns)]
-                  #:when (if node-ids (memv node-id node-ids) #t))
-      (values node-id conn)))
-  (define brokers (Metadata-brokers (client-metadata c)))
-  (define connected-node-ids (hash-keys conns))
-  (define unconnected-brokers
-    (for*/list ([b (in-list brokers)]
-                [node-id (in-value (BrokerMetadata-node-id b))]
-                #:unless (memv node-id connected-node-ids)
-                #:when (if node-ids (memv node-id node-ids) #t))
-      b))
-  (if (null? unconnected-brokers)
-      (find-best-connection filtered-conns)
-      (establish-new-connection c conns (random-ref unconnected-brokers))))
+  (force (send-manager c get-best-connection node-ids)))
 
 (define (get-controller-connection c)
-  (define metadata (client-metadata c))
-  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b)
-                                        (Metadata-controller-id metadata)))
-                              (Metadata-brokers metadata)))
-  (unless maybe-broker
-    (raise-argument-error 'get-node-connection "controller node not found"))
-  (define conns
-    (drop-disconnected c))
-  (hash-ref conns
-            (BrokerMetadata-node-id maybe-broker)
-            (λ () (establish-new-connection c conns maybe-broker))))
+  (define metadata
+    (client-metadata c))
+  (get-node-connection c (λ (b)
+                           (= (BrokerMetadata-node-id b)
+                              (Metadata-controller-id metadata)))))
 
 (define (get-node-connection c node-id)
-  (define brokers (Metadata-brokers (client-metadata c)))
-  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
+  (define metadata (client-metadata c))
+  (define maybe-broker
+    (findf
+     (cond
+       [(procedure? node-id) node-id]
+       [else (λ (b) (= (BrokerMetadata-node-id b) node-id))])
+     (Metadata-brokers metadata)))
   (unless maybe-broker
-    (raise-argument-error 'get-node-connection "unknown node id" node-id))
-  (define conns
-    (drop-disconnected c))
-  (hash-ref conns node-id (λ ()
-                            (establish-new-connection c conns maybe-broker))))
+    (raise-argument-error 'get-node-connection "node not found"))
+  (force (send-manager c get-connection maybe-broker)))
 
-(define (get-node-connection/unmanaged c node-id)
-  (define brokers (Metadata-brokers (client-metadata c)))
-  (define maybe-broker (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
-  (unless maybe-broker
-    (raise-argument-error 'get-node-connection "unknown node id" node-id))
-  (establish-new-connection/unmanaged c maybe-broker))
+(define (client-metadata c)
+  (send-manager c get-metadata))
 
 (define (reload-metadata c)
-  (define ctl-conn (get-controller-connection c))
-  (define metadata (sync (make-Metadata-evt ctl-conn null)))
-  (begin0 metadata
-    (set-client-metadata! c metadata)))
+  (send-manager c reload-metadata (get-controller-connection c)))
 
 (define (disconnect-all c)
-  (define connections-box (client-connections-box c))
-  (for/list ([conn (in-hash-values (unbox connections-box))])
-    (disconnect conn))
-  (set-box! connections-box (hasheqv)))
+  (send-manager c disconnect-all))
 
-(define (drop-disconnected c)
-  ((client-update-connections-box c)
-   (λ (conns)
-     (for/hasheqv ([(node-id conn) (in-hash conns)] #:when (connected? conn))
-       (values node-id conn)))))
 
-(define (establish-new-connection/unmanaged c broker)
-  (define conn
-    (connect
-     (client-id c)
-     (BrokerMetadata-host broker)
-     (BrokerMetadata-port broker)
-     (client-ssl-ctx c)))
-  (begin0 conn
-    (when (client-sasl-mechanism&ctx c)
-      (apply authenticate conn (client-sasl-mechanism&ctx c)))))
+;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (establish-new-connection c conns broker)
-  (define node-id (BrokerMetadata-node-id broker))
-  (define conn (establish-new-connection/unmanaged c broker))
-  (define connections-box
-    (client-connections-box c))
-  (define updated-conns
-    (hash-set conns node-id conn))
-  (cond
-    [(box-cas! connections-box conns updated-conns)
-     (begin0 conn
-       (log-kafka-debug "established connection to node ~a" node-id))]
-    [else
-     (log-kafka-debug "lost race while establishing connection, disconnecting~n current-thread: ~a" (current-thread))
-     (disconnect conn)
-     (log-kafka-debug "retrying get-connection")
-     (get-connection c)]))
+(define ((make-manager manager-ch client-id sasl-mechanism&ctx ssl-ctx metadata))
+  (define (connect* broker)
+    (define conn
+      (connect
+       client-id
+       (BrokerMetadata-host broker)
+       (BrokerMetadata-port broker)
+       ssl-ctx))
+    (begin0 conn
+      (when sasl-mechanism&ctx
+        (apply authenticate conn sasl-mechanism&ctx))))
+  (define (enliven broker conn)
+    (if (connected? conn) conn (connect* broker)))
+  (let loop ([st (make-state metadata)])
+    (loop
+     (apply
+      sync
+      (handle-evt
+       manager-ch
+       (lambda (msg)
+         (match msg
+           [`(get-best-connection ,res-ch ,nack ,node-ids)
+            (match-define (state meta conns _) st)
+            (define filtered-conns
+              (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
+                            #:when (if node-ids (memv node-id node-ids) #t))
+                (values node-id conn-promise)))
+            (define brokers (Metadata-brokers meta))
+            (define connected-node-ids (hash-keys conns))
+            (define unconnected-brokers
+              (for*/list ([b (in-list brokers)]
+                          [node-id (in-value (BrokerMetadata-node-id b))]
+                          #:unless (memv node-id connected-node-ids)
+                          #:when (if node-ids (memv node-id node-ids) #t))
+                b))
+            (cond
+              [(null? unconnected-brokers)
+               (define conn
+                 (delay/thread
+                  (define-values (node-id conn)
+                    (find-best-connection
+                     (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)])
+                       (values node-id (force conn-promise)))))
+                  (define broker
+                    (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
+                  (enliven broker conn)))
+               (state-add-req st `(,res-ch ,nack ,conn))]
+              [else
+               (define b (random-ref unconnected-brokers))
+               (define conn (delay/thread (connect* b)))
+               (define node-id (BrokerMetadata-node-id b))
+               (state-add-req
+                (state-set-conn st node-id conn)
+                `(,res-ch ,nack ,conn))])]
+
+           [`(get-connection ,res-ch ,nack ,broker)
+            (define node-id
+              (BrokerMetadata-node-id broker))
+            (define maybe-conn-promise
+              (hash-ref (state-conns st) node-id #f))
+            (cond
+              [maybe-conn-promise
+               (define conn-promise
+                 (delay/thread
+                  (enliven broker (force maybe-conn-promise))))
+               (state-add-req st `(,res-ch ,nack ,conn-promise))]
+              [else
+               (define conn-promise
+                 (delay/thread
+                  (connect* broker)))
+               (state-add-req
+                (state-set-conn st node-id conn-promise)
+                `(,res-ch ,nack ,conn-promise))])]
+
+           [`(get-metadata ,res-ch ,nack)
+            (state-add-req st `(,res-ch ,nack ,(state-meta st)))]
+
+           [`(reload-metadata ,res-ch ,nack ,ctl-conn)
+            (with-handlers ([exn:fail? (λ (e) (state-add-req st `(,res-ch ,nack ,e)))])
+              (define meta (sync (make-Metadata-evt ctl-conn null)))
+              (state-add-req
+               (state-set-meta st meta)
+               `(,res-ch ,nack ,meta)))]
+
+           [`(disconnect-all ,res-ch ,nack)
+            (with-handlers ([exn:fail? (λ (e) (state-add-req st `(,res-ch ,nack ,e)))])
+              (for ([conn-promise (in-hash-values (state-conns st))])
+                (disconnect (force conn-promise)))
+              (state-add-req
+               (state-clear-conns st)
+               `(,res-ch ,nack ,(void))))]
+
+           [_
+            (begin0 st
+              (log-kafka-error "client: unexpected message ~e" msg))])))
+      (append
+       (for/list ([r (in-list (state-reqs st))])
+         (match-define `(,res-ch ,_ ,res) r)
+         (handle-evt
+          (channel-put-evt res-ch res)
+          (λ (_) (state-remove-req st r))))
+       (for/list ([r (in-list (state-reqs st))])
+         (match-define `(,_ ,nack ,_) r)
+         (handle-evt nack (λ (_) (state-remove-req st r)))))))))
+
+(define-syntax-rule (send-manager c id . args)
+  (sync (make-manager-evt c 'id . args)))
+
+(define (make-manager-evt c id . args)
+  (define res-ch
+    (make-channel))
+  (handle-evt
+   (nack-guard-evt
+    (lambda (nack)
+      (thread-resume
+       (client-manager c)
+       (current-thread))
+      (begin0 res-ch
+        (channel-put
+         (client-manager-ch c)
+         `(,id ,res-ch ,nack ,@args)))))
+   (lambda (res-or-exn)
+     (begin0 res-or-exn
+       (when (exn:fail? res-or-exn)
+         (raise res-or-exn))))))
+
+
+;; manager state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; conns: node id -> promise of Connection
+(struct state (meta conns reqs)
+  #:transparent)
+
+(define (make-state meta)
+  (state meta (hasheqv) null))
+
+(define (state-set-meta st meta)
+  (struct-copy state st [meta meta]))
+
+(define (state-add-req st req)
+  (struct-copy state st [reqs (cons req (state-reqs st))]))
+
+(define (state-remove-req st req)
+  (struct-copy state st [reqs (remq req (state-reqs st))]))
+
+(define (state-set-conn st node-id conn)
+  (struct-copy state st [conns (hash-set (state-conns st) node-id conn)]))
+
+(define (state-clear-conns st)
+  (struct-copy state st [conns (hasheqv)]))
+
+
+;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (find-best-connection conns)
   (for/fold ([best null]
              [least-reqs +inf.0]
-             #:result (random-ref best))
-            ([conn (in-hash-values conns)])
+             #:result (apply values (random-ref best)))
+            ([(node-id conn) (in-hash conns)])
     (define reqs
       (get-requests-in-flight conn))
     (cond
       [(= reqs least-reqs)
-       (values (cons conn best) least-reqs)]
+       (values `((,node-id ,conn) . ,best) least-reqs)]
       [(< reqs least-reqs)
-       (values (list conn) reqs)]
+       (values `((,node-id ,conn)) reqs)]
       [else
        (values best least-reqs)])))
 
