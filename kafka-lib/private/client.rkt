@@ -102,57 +102,51 @@
        (lambda (msg)
          (match msg
            [`(get-best-connection ,res-ch ,nack ,node-ids)
-            (match-define (state meta conns _) st)
-            (define filtered-conns
-              (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
+            (with-handlers ([exn:fail? (λ (e) (state-add-req st `(,res-ch ,nack ,e)))])
+              (match-define (state meta conns _) st)
+              (define filtered-conns
+                (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
+                              #:when (if node-ids (memv node-id node-ids) #t))
+                  (values node-id conn-promise)))
+              (define brokers (Metadata-brokers meta))
+              (define connected-node-ids (hash-keys conns))
+              (define unconnected-brokers
+                (for*/list ([b (in-list brokers)]
+                            [node-id (in-value (BrokerMetadata-node-id b))]
+                            #:unless (memv node-id connected-node-ids)
                             #:when (if node-ids (memv node-id node-ids) #t))
-                (values node-id conn-promise)))
-            (define brokers (Metadata-brokers meta))
-            (define connected-node-ids (hash-keys conns))
-            (define unconnected-brokers
-              (for*/list ([b (in-list brokers)]
-                          [node-id (in-value (BrokerMetadata-node-id b))]
-                          #:unless (memv node-id connected-node-ids)
-                          #:when (if node-ids (memv node-id node-ids) #t))
-                b))
-            (cond
-              [(null? unconnected-brokers)
-               (define conn
-                 (delay/thread
-                  (define-values (node-id conn)
-                    (find-best-connection
-                     (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)])
-                       (values node-id (force conn-promise)))))
-                  (define broker
-                    (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
-                  (enliven broker conn)))
-               (state-add-req st `(,res-ch ,nack ,conn))]
-              [else
-               (define b (random-ref unconnected-brokers))
-               (define conn (delay/thread (connect* b)))
-               (define node-id (BrokerMetadata-node-id b))
-               (state-add-req
-                (state-set-conn st node-id conn)
-                `(,res-ch ,nack ,conn))])]
+                  b))
+              (define-values (node-id conn)
+                (cond
+                  [(null? unconnected-brokers)
+                   (define-values (node-id conn)
+                     (find-best-connection
+                      (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)])
+                        (values node-id (force conn-promise)))))
+                   (define broker
+                     (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
+                   (values node-id (delay/thread (enliven broker conn)))]
+                  [else
+                   (define broker (random-ref unconnected-brokers))
+                   (define node-id (BrokerMetadata-node-id broker))
+                   (values node-id (delay/thread (connect* broker)))]))
+              (state-add-req
+               (state-set-conn st node-id conn)
+               `(,res-ch ,nack ,conn)))]
 
            [`(get-connection ,res-ch ,nack ,broker)
             (define node-id
               (BrokerMetadata-node-id broker))
             (define maybe-conn-promise
               (hash-ref (state-conns st) node-id #f))
-            (cond
-              [maybe-conn-promise
-               (define conn-promise
-                 (delay/thread
-                  (enliven broker (force maybe-conn-promise))))
-               (state-add-req st `(,res-ch ,nack ,conn-promise))]
-              [else
-               (define conn-promise
-                 (delay/thread
-                  (connect* broker)))
-               (state-add-req
-                (state-set-conn st node-id conn-promise)
-                `(,res-ch ,nack ,conn-promise))])]
+            (define conn-promise
+              (delay/thread
+               (if maybe-conn-promise
+                   (enliven broker (force maybe-conn-promise))
+                   (connect* broker))))
+            (state-add-req
+             (state-set-conn st node-id conn-promise)
+             `(,res-ch ,nack ,conn-promise))]
 
            [`(get-metadata ,res-ch ,nack)
             (state-add-req st `(,res-ch ,nack ,(state-meta st)))]
