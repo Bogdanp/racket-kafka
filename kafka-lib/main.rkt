@@ -40,11 +40,14 @@
   [delete-groups (-> client? string? ... DeletedGroups?)]
   [list-groups (-> client? (listof Group?))]
   [list-offsets (-> client?
-                    (hash/c string? (hash/c exact-nonnegative-integer? (or/c 'earliest 'latest exact-nonnegative-integer?)))
-                    (hash/c string? PartitionOffset?))]))
+                    (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
+                    (hash/c topic&partition/c PartitionOffset?))]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define topic&partition/c
+  (cons/c string? exact-nonnegative-integer?))
 
 (define (get-metadata c . topics)
   (sync (make-Metadata-evt (get-controller-connection c) topics)))
@@ -62,18 +65,8 @@
   (sync (make-DescribeGroups-evt (get-controller-connection c) groups)))
 
 (define (delete-groups c . groups)
-  (define nodes-to-groups
-    (for/fold ([nodes-to-groups (hash)])
-              ([group-id (in-list groups)])
-      (define coord
-        (find-group-coordinator c group-id))
-      (hash-update
-       nodes-to-groups
-       (Coordinator-node-id coord)
-       (λ (gs) (cons group-id gs))
-       null)))
   (define deleted-groupss
-    (for/list ([(node-id group-ids) (in-hash nodes-to-groups)])
+    (for/list ([(node-id group-ids) (in-hash (get-groups-by-coordinator groups))])
       (delay/thread
        (define res
          (sync (make-DeleteGroups-evt (get-node-connection c node-id) group-ids)))
@@ -92,5 +85,54 @@
        (sync (make-ListGroups-evt (get-node-connection c node-id))))))
   (apply append (map force groupss)))
 
-(define (list-offsets c topics)
-  (sync (make-ListOffsets-evt (get-controller-connection c) topics)))
+(define (list-offsets c topic&partitions)
+  (define offsetss
+    (for/list ([(node-id t&ps) (in-hash (get-topic-partitions-by-leader c topic&partitions))])
+      (define topics
+        (for/fold ([topics (hash)])
+                  ([t&p (in-list t&ps)])
+          (define topic (car t&p))
+          (define part (cdr t&p))
+          (define offset (hash-ref topic&partitions t&p))
+          (hash-update
+           topics
+           topic
+           (λ (parts) (hash-set parts part offset))
+           hasheqv)))
+      (delay/thread
+       (sync (make-ListOffsets-evt (get-node-connection c node-id) topics)))))
+  (for*/hash ([offsets (in-list (map force offsetss))]
+              [(topic parts) (in-hash offsets)]
+              [part (in-list parts)])
+    (values (cons topic (PartitionOffset-id part)) part)))
+
+
+;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (get-groups-by-coordinator c groups)
+  (for/fold ([nodes-to-groups (hasheqv)])
+            ([group-id (in-list groups)])
+    (define coord
+      (find-group-coordinator c group-id))
+    (hash-update
+     nodes-to-groups
+     (Coordinator-node-id coord)
+     (λ (gs) (cons group-id gs))
+     null)))
+
+(define (get-topic-partitions-by-leader c topic&partitions)
+  (define topic&partitions-to-node-ids
+    (for*/hash ([topic (in-list (Metadata-topics (client-metadata c)))]
+                [part (in-list (TopicMetadata-partitions topic))])
+      (define topic&partition
+        (cons (TopicMetadata-name topic)
+              (PartitionMetadata-id part)))
+      (values topic&partition (PartitionMetadata-leader-id part))))
+  (for/fold ([nodes-to-topic&partition (hasheqv)])
+            ([(topic&partition node-id) (in-hash topic&partitions-to-node-ids)]
+             #:when (hash-has-key? topic&partitions topic&partition))
+    (hash-update
+     nodes-to-topic&partition
+     node-id
+     (λ (t&ps) (cons topic&partition t&ps))
+     null)))
