@@ -37,7 +37,7 @@
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
   [describe-groups (-> client? string? ... (listof Group?))]
-  [delete-groups (-> client? string? ... DeletedGroups?)]
+  [delete-groups (-> client? string? ... (listof DeletedGroup?))]
   [list-groups (-> client? (listof Group?))]
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
@@ -62,7 +62,13 @@
   (sync (make-FindCoordinator-evt (get-controller-connection c) group-id)))
 
 (define (describe-groups c . groups)
-  (sync (make-DescribeGroups-evt (get-controller-connection c) groups)))
+  (define groupss
+    (for/list ([(node-id group-ids) (in-hash (get-groups-by-coordinator c groups))])
+      (delay/thread
+       (define res
+         (sync (make-DescribeGroups-evt (get-node-connection c node-id) group-ids)))
+       (DescribedGroups-groups res))))
+  (apply append (map force groupss)))
 
 (define (delete-groups c . groups)
   (define deleted-groupss
@@ -71,11 +77,7 @@
        (define res
          (sync (make-DeleteGroups-evt (get-node-connection c node-id) group-ids)))
        (DeletedGroups-groups res))))
-  (define deleted-groups
-    (apply append (map force deleted-groupss)))
-  (make-DeletedGroups
-   #:throttle-time-ms 0 ;; FIXME?
-   #:groups deleted-groups))
+  (apply append (map force deleted-groupss)))
 
 (define (list-groups c)
   (define groupss
