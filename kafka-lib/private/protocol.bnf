@@ -359,6 +359,19 @@ SaslErrorMessage           = String;
 SessionLifetimeMs          = i64be;
 
 
+## DeleteGroups (code 42)
+
+DeleteGroupsRequestV0 = GroupIDs;
+DeleteGroupsRequestV1 = DeleteGroupsRequestV0;
+
+DeleteGroupsResponseV0 = ThrottleTimeMs ArrayLen DeleteGroupsResponseDataV0{ArrayLen_1};
+DeleteGroupsResponseV1 = DeleteGroupsResponseV0;
+
+DeleteGroupsResponseDataV0 = GroupID ErrorCode;
+
+GroupIDs = ArrayLen GroupID{ArrayLen_1};
+
+
 ## Common
 
 @foreign-parsers "batch-native.rkt"

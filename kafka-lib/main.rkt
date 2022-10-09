@@ -37,6 +37,7 @@
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
   [describe-groups (-> client? string? ... (listof Group?))]
+  [delete-groups (-> client? string? ... DeletedGroups?)]
   [list-groups (-> client? (listof Group?))]
   [list-offsets (-> client?
                     (hash/c string? (hash/c exact-nonnegative-integer? (or/c 'earliest 'latest exact-nonnegative-integer?)))
@@ -59,6 +60,29 @@
 
 (define (describe-groups c . groups)
   (sync (make-DescribeGroups-evt (get-controller-connection c) groups)))
+
+(define (delete-groups c . groups)
+  (define nodes-to-groups
+    (for/fold ([nodes-to-groups (hash)])
+              ([group-id (in-list groups)])
+      (define coord
+        (find-group-coordinator c group-id))
+      (hash-update
+       nodes-to-groups
+       (Coordinator-node-id coord)
+       (λ (gs) (cons group-id gs))
+       null)))
+  (define deleted-groupss
+    (for/list ([(node-id group-ids) (in-hash nodes-to-groups)])
+      (delay/thread
+       (define res
+         (sync (make-DeleteGroups-evt (get-node-connection c node-id) group-ids)))
+       (DeletedGroups-groups res))))
+  (define deleted-groups
+    (apply append (map force deleted-groupss)))
+  (make-DeletedGroups
+   #:throttle-time-ms 0 ;; FIXME?
+   #:groups deleted-groups))
 
 (define (list-groups c)
   (define groupss

@@ -9,6 +9,7 @@
  "serde/commit.rkt"
  "serde/contract.rkt"
  "serde/create-topics.rkt"
+ "serde/delete-groups.rkt"
  "serde/delete-topics.rkt"
  "serde/describe-groups.rkt"
  "serde/fetch-offsets.rkt"
