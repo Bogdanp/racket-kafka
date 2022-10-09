@@ -351,6 +351,21 @@ DeleteTopicsResponsesV6    = CompactArrayLen DeleteTopicsResponseDataV6{CompactA
 DeleteTopicsResponseDataV6 = CompactTopicName UUID ErrorCode CompactErrorMessage Tags;
 
 
+## DescribeConfigs (code 32)
+
+DescribeConfigsRequestV0  = ArrayLen DescribeConfigsResourceV0{ArrayLen_1};
+DescribeConfigsResourceV0 = ResourceType ResourceName ArrayLen ConfigName{ArrayLen_1};
+ResourceType              = i8;
+ResourceName              = String;
+
+DescribeConfigsResponseV0 = ThrottleTimeMs ArrayLen DescribeConfigsResultV0{ArrayLen_1};
+DescribeConfigsResultV0   = ErrorCode ErrorMessage ResourceType ResourceName ArrayLen ResourceConfigV0{ArrayLen_1};
+ResourceConfigV0          = ConfigName ConfigValue ReadOnly IsDefault IsSensitive;
+ReadOnly                  = i8;
+IsDefault                 = i8;
+IsSensitive               = i8;
+
+
 ## SaslAuthenticate (code 36)
 
 SaslAuthenticateRequestV1  = Bytes;
@@ -388,8 +403,7 @@ GroupIDs = ArrayLen GroupID{ArrayLen_1};
   {UUID            un-UUID}
   ;
 
-Size         = i32be;
-
+Size                = i32be;
 ErrorCode           = i16be;
 ErrorMessage        = String;
 CompactErrorMessage = CompactString;

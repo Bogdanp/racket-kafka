@@ -6,7 +6,6 @@
          racket/string
          sasl
          "private/client.rkt"
-         "private/connection.rkt"
          "private/error.rkt"
          "private/serde.rkt")
 
@@ -41,7 +40,8 @@
   [list-groups (-> client? (listof Group?))]
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
-                    (hash/c topic&partition/c PartitionOffset?))]))
+                    (hash/c topic&partition/c PartitionOffset?))]
+  [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -107,6 +107,9 @@
               [(topic parts) (in-hash offsets)]
               [part (in-list parts)])
     (values (cons topic (PartitionOffset-id part)) part)))
+
+(define (describe-configs c . resources)
+  (sync (make-DescribeConfigs-evt (get-controller-connection c) resources)))
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
