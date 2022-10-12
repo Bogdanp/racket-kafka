@@ -32,6 +32,8 @@
   [client-metadata (-> client? Metadata?)]
   [disconnect-all (-> client? void?)]
   [get-metadata (-> client? string? ... Metadata?)]
+  [describe-cluster (-> client? Cluster?)]
+  [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
@@ -40,8 +42,7 @@
   [list-groups (-> client? (listof Group?))]
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
-                    (hash/c topic&partition/c PartitionOffset?))]
-  [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]))
+                    (hash/c topic&partition/c PartitionOffset?))]))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -51,6 +52,12 @@
 
 (define (get-metadata c . topics)
   (sync (make-Metadata-evt (get-controller-connection c) topics)))
+
+(define (describe-cluster c)
+  (sync (make-DescribeCluster-evt (get-controller-connection c))))
+
+(define (describe-configs c . resources)
+  (sync (make-DescribeConfigs-evt (get-controller-connection c) resources)))
 
 (define (create-topics c topic0 . topics)
   (sync (make-CreateTopics-evt (get-controller-connection c) (cons topic0 topics))))
@@ -107,9 +114,6 @@
               [(topic parts) (in-hash offsets)]
               [part (in-list parts)])
     (values (cons topic (PartitionOffset-id part)) part)))
-
-(define (describe-configs c . resources)
-  (sync (make-DescribeConfigs-evt (get-controller-connection c) resources)))
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

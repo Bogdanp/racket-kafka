@@ -387,6 +387,34 @@ DeleteGroupsResponseDataV0 = GroupID ErrorCode;
 GroupIDs = ArrayLen GroupID{ArrayLen_1};
 
 
+## DescribeCluster (code 60)
+
+DescribeClusterRequestV0           = IncludeClusterAuthorizedOperations Tags;
+IncludeClusterAuthorizedOperations = Bool;
+
+DescribeClusterResponseV0   = ThrottleTimeMs ErrorCode CompactErrorMessage ClusterID ControllerID CompactArrayLen CompactBroker{CompactArrayLen_1} ClusterAuthorizedOperations Tags;
+ClusterID                   = CompactString;
+CompactBroker               = BrokerID CompactHost Port CompactRack Tags;
+CompactRack                 = CompactString;
+ClusterAuthorizedOperations = i32be;
+
+
+## DescribeProducers (code 61)
+
+DescribeProducersRequestV0      = CompactArrayLen DescribeProducersRequestTopicV0{CompactArrayLen_1} Tags;
+DescribeProducersRequestTopicV0 = CompactTopicName CompactArrayLen PartitionID{CompactArrayLen_1} Tags;
+
+DescribeProducersResponseV0               = ThrottleTimeMs CompactArrayLen DescribeProducersResponseTopicV0{CompactArrayLen_1} Tags;
+DescribeProducersResponseTopicV0          = CompactTopicName CompactArrayLen DescribeProducersResponseTopicPartitionV0{CompactArrayLen_1} Tags;
+DescribeProducersResponseTopicPartitionV0 = PartitionID ErrorCode CompactErrorMessage CompactArrayLen DescribeProducersResponseProducerV0{CompactArrayLen_1} Tags;
+DescribeProducersResponseProducerV0       = ProducerID ProducerEpoch LastSequence LastTimestamp CoordinatorEpoch CurrentTxnStartOffset;
+ProducerEpoch                             = i32be;
+LastSequence                              = i32be;
+LastTimestamp                             = i64be;
+CoordinatorEpoch                          = i32be;
+CurrentTxnStartOffset                     = i64be;
+
+
 ## Common
 
 @foreign-parsers "batch-native.rkt"
