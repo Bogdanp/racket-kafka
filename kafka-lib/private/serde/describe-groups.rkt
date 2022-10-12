@@ -44,7 +44,7 @@
     (proto:un-DescribeGroupsRequestV3
      `((ArrayLen_1 . ,(length groups))
        (GroupID_1 . ,groups)
-       (IncludeAuthorizedOperations_1 . ,(if include-authorized-operations? 1 0))))))
+       (IncludeAuthorizedOperations_1 . ,include-authorized-operations?)))))
 
 (define ((make-dec-describe-groups [groups-key 'DescribeGroupsGroupV0_1]
                                    [members-key 'DescribeGroupsMemberV0_1]) res)

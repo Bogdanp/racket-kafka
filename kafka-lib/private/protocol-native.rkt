@@ -6,6 +6,8 @@
 
 (provide
  (rename-out
+  [parse-bool Bool]
+  [unparse-bool un-Bool]
   [parse-uuid UUID]
   [unparse-uuid un-UUID]
   [parse-bytes Bytes]
@@ -31,6 +33,16 @@
     [(eof-object? bs) (make-err in "unexpected EOF while reading ~a" what)]
     [(< (bytes-length bs) len) (make-err in "input ended before ~a" what)]
     [else (ok bs)]))
+
+(define (parse-bool in)
+  (define b (read-byte in))
+  (if (eof-object? b)
+      (make-err in "unexpected EOF while reading Bool")
+      (ok (not (= b 0)))))
+
+(define (unparse-bool out v)
+  (begin0 (ok (and v #t))
+    (write-byte (if v 1 0) out)))
 
 (define (parse-uuid in)
   (expect 'UUID 16 in))

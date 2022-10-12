@@ -50,7 +50,7 @@
        `((CreateTopicsRequestsV1_1 . ((ArrayLen_1             . ,(length topics))
                                       (CreateTopicRequestV1_1 . ,topic-requests)))
          (TimeoutMs_1 . ,timeout-ms)
-         (ValidateOnly_1 . ,(if validate-only? 1 0))))))
+         (ValidateOnly_1 . ,validate-only?)))))
   (lambda (res)
     (CreatedTopics
      (for/list ([t (in-list (ref 'CreateTopicsResponseTopicV1_1 res))])

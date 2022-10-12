@@ -250,7 +250,7 @@ DescribeGroupsRequestV0     = ArrayLen GroupID{ArrayLen_1};
 DescribeGroupsRequestV1     = DescribeGroupsRequestV0;
 DescribeGroupsRequestV2     = DescribeGroupsRequestV0;
 DescribeGroupsRequestV3     = ArrayLen GroupID{ArrayLen_1} IncludeAuthorizedOperations;
-IncludeAuthorizedOperations = u8;
+IncludeAuthorizedOperations = Bool;
 DescribeGroupsRequestV4     = DescribeGroupsRequestV3;
 DescribeGroupsRequestV5     = ArrayLen CompactGroupID{ArrayLen_1} IncludeAuthorizedOperations Tags;
 
@@ -309,7 +309,7 @@ Configs                = ArrayLen Config{ArrayLen_1};
 Config                 = ConfigName ConfigValue;
 ConfigName             = String;
 ConfigValue            = String;
-ValidateOnly           = u8;
+ValidateOnly           = Bool;
 
 CreateTopicsResponseV0       = CreateTopicsResponseTopicsV0;
 CreateTopicsResponseTopicsV0 = ArrayLen CreateTopicsResponseTopicV0{ArrayLen_1};
@@ -395,6 +395,7 @@ GroupIDs = ArrayLen GroupID{ArrayLen_1};
 
 @foreign-parsers "protocol-native.rkt"
   {Bytes           un-Bytes}
+  {Bool            un-Bool}
   {CompactArrayLen un-CompactArrayLen}
   {CompactBytes    un-CompactBytes}
   {CompactString   un-CompactString}
