@@ -30,10 +30,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@master
-      - uses: Bogdanp/setup-racket@v1.7
+      - uses: Bogdanp/setup-racket@v1.9
         with:
           variant: 'CS'
-          version: '8.4'
+          version: '8.6'
       - run: raco pkg install --auto kafka-lib/ kafka/
       - run: env PLTSTDERR='error debug@kafka' raco test --drdr kafka-lib/
       - run: env PLTSTDERR='error debug@kafka' raco test tests/
