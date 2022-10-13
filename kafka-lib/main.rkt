@@ -34,6 +34,7 @@
   [get-metadata (-> client? string? ... Metadata?)]
   [describe-cluster (-> client? Cluster?)]
   [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]
+  [describe-producers (-> client? (hash/c string? (non-empty-listof exact-nonnegative-integer?)) DescribedProducers?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
@@ -58,6 +59,11 @@
 
 (define (describe-configs c . resources)
   (sync (make-DescribeConfigs-evt (get-controller-connection c) resources)))
+
+(define (describe-producers c topics)
+  (when (zero? (hash-count topics))
+    (raise-argument-error 'describe-producers "(non-empty-hash/c string? (listof integer?))" topics))
+  (sync (make-DescribeProducers-evt (get-controller-connection c) topics)))
 
 (define (create-topics c topic0 . topics)
   (sync (make-CreateTopics-evt (get-controller-connection c) (cons topic0 topics))))
