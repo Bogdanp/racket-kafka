@@ -1,7 +1,7 @@
 #lang info
 
 (define collection "kafka")
-(define deps '("base"
+(define deps '(("base" #:version "8.4")
                "kafka-lib"))
 (define build-deps '("racket-doc"
                      "sasl-doc"
