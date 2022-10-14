@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/contract
+         "authorized-operation.rkt"
          "core.rkt"
          "metadata.rkt")
 
@@ -11,7 +12,7 @@
    [cluster-id string?]
    [controller-id exact-nonnegative-integer?]
    [brokers (listof BrokerMetadata?)]
-   [authorized-operations exact-integer?]))
+   [authorized-operations (listof authorized-operation/c)]))
 
 (define-request DescribeCluster
   ([include-authorized-operations? #t])
@@ -31,7 +32,8 @@
      #:error-message (ref 'CompactErrorMessage_1 res)
      #:cluster-id (ref 'ClusterID_1 res)
      #:controller-id (ref 'ControllerID_1 res)
-     #:authorized-operations (ref 'ClusterAuthorizedOperations_1 res)
+     #:authorized-operations (integer->authorized-operations
+                              (ref 'ClusterAuthorizedOperations_1 res))
      #:brokers (for/list ([b (in-list (ref 'CompactBroker_1 res))])
                  (make-BrokerMetadata
                   #:node-id (ref 'BrokerID_1 b)

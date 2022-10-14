@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/contract
+         "authorized-operation.rkt"
          "core.rkt")
 
 (define-record GroupMember
@@ -17,4 +18,4 @@
    [protocol-type string?]
    [(protocol-data #f) (or/c #f string?)]
    [(members null) (listof GroupMember?)]
-   [(authorized-operations #f) (or/c #f exact-integer?)]))
+   [(authorized-operations null) (listof authorized-operation/c)]))

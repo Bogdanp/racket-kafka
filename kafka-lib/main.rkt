@@ -31,6 +31,7 @@
                     client?)]
   [client-metadata (-> client? Metadata?)]
   [disconnect-all (-> client? void?)]
+
   [get-metadata (-> client? string? ... Metadata?)]
   [describe-cluster (-> client? Cluster?)]
   [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]

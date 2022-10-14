@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/contract
+         "authorized-operation.rkt"
          "core.rkt"
          "group.rkt")
 
@@ -57,7 +58,8 @@
                #:state (ref 'GroupState_1 g)
                #:protocol-type (ref 'ProtocolType_1 g)
                #:protocol-data (ref 'ProtocolData_1 g)
-               #:authorized-operations (opt 'AuthorizedOperations_1 g)
+               #:authorized-operations (integer->authorized-operations
+                                        (or (opt 'AuthorizedOperations_1 g) -1))
                #:members (for/list ([m (in-list (ref members-key g))])
                            (make-GroupMember
                             #:id (ref 'MemberID_1 m)

@@ -6,6 +6,7 @@
     (provide (all-from-out mod ...))))
 
 (reprovide
+ "serde/authorized-operation.rkt"
  "serde/commit.rkt"
  "serde/contract.rkt"
  "serde/create-topics.rkt"
