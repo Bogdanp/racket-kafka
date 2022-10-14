@@ -34,7 +34,7 @@
 
   [get-metadata (-> client? string? ... Metadata?)]
   [describe-cluster (-> client? Cluster?)]
-  [describe-configs (-> client? DescribeResource? DescribeResource? ... DescribedResources?)]
+  [describe-configs (-> client? DescribeResource? DescribeResource? ... (listof DescribedResource?))]
   [describe-producers (-> client? (hash/c string? (non-empty-listof exact-nonnegative-integer?)) DescribedProducers?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
@@ -59,7 +59,24 @@
   (sync (make-DescribeCluster-evt (get-controller-connection c))))
 
 (define (describe-configs c . resources)
-  (sync (make-DescribeConfigs-evt (get-controller-connection c) resources)))
+  (define resources-by-node-id
+    (for/fold ([resources-by-node-id (hasheqv)])
+              ([res (in-list resources)])
+      (define node-id
+        (and (eq? (DescribeResource-type res) 'broker)
+             (string->number (DescribeResource-name res))))
+      (hash-update resources-by-node-id node-id (λ (rs) (cons res rs)) null)))
+  (define described-resourcess
+    (for/list ([(node-id resources) (in-hash resources-by-node-id)])
+      (delay/thread
+       (define conn
+           (if node-id
+               (get-node-connection c node-id)
+               (get-connection c)))
+       (define res
+         (sync (make-DescribeConfigs-evt conn resources)))
+       (DescribedResources-resources res))))
+  (apply append (map force described-resourcess)))
 
 (define (describe-producers c topics)
   (when (zero? (hash-count topics))
