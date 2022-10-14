@@ -74,6 +74,8 @@
     (start-heartbeat-thd! the-consumer)))
 
 (define (consume-evt c [timeout 1000])
+  (define deadline
+    (+ (current-inexact-monotonic-milliseconds) timeout))
   (define current-topic-partitions
     (consumer-topic-partitions c))
   (define nodes-by-topic&pid
@@ -108,46 +110,61 @@
          (raise e)])))
    (if (null? node-ids)
        (handle-evt
-        (alarm-evt (+ (current-inexact-milliseconds) timeout))
+        (alarm-evt deadline #t)
         (lambda (_)
           (values 'records (vector))))
-       (handle-evt
-        (make-Fetch-evt
-         (get-connection (consumer-client c) node-ids)
-         (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
-           (values topic (for/list ([(pid offset) (in-hash pids)])
-                           (make-TopicPartition #:id pid #:offset offset))))
-         timeout)
-        (lambda (res)
-          (define records
-            (for*/vector ([(topic partitions) (in-hash (FetchResponse-topics res))]
-                          [p (in-list partitions)]
-                          [pid (in-value (FetchResponsePartition-id p))]
-                          [offsets (in-value (hash-ref current-topic-partitions topic))]
-                          [offset (in-value (hash-ref offsets pid))]
-                          [b (in-list (FetchResponsePartition-batches p))]
-                          [r (in-vector (batch-records b))]
-                          #:when (>= (record-offset r) offset))
-              r))
-          (define offsets
-            (for*/fold ([offsets (hash)])
-                       ([(topic partitions) (in-hash (FetchResponse-topics res))]
-                        [p (in-list partitions)]
-                        [b (in-list (FetchResponsePartition-batches p))])
-              (define key (cons topic (FetchResponsePartition-id p)))
-              (define size (batch-size b))
-              (define last-record
-                (and (not (zero? size))
-                     (vector-ref (batch-records b) (sub1 size))))
-              (if last-record
-                  (hash-set offsets key (add1 (record-offset last-record)))
-                  offsets)))
-          (define topic-partitions
-            (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
-              (values topic (for/hash ([(pid offset) (in-hash partitions)])
-                              (values pid (hash-ref offsets (cons topic pid) offset))))))
-          (set-consumer-topic-partitions! c topic-partitions)
-          (values 'records records))))))
+       (replace-evt
+        (handle-evt
+         (make-Fetch-evt
+          (get-connection (consumer-client c) node-ids)
+          (for/hash ([(topic pids) (in-hash (consumer-topic-partitions c))])
+            (values topic (for/list ([(pid offset) (in-hash pids)])
+                            (make-TopicPartition #:id pid #:offset offset))))
+          timeout)
+         (lambda (res)
+           (define records
+             (for*/vector ([(topic partitions) (in-hash (FetchResponse-topics res))]
+                           [p (in-list partitions)]
+                           [pid (in-value (FetchResponsePartition-id p))]
+                           [offsets (in-value (hash-ref current-topic-partitions topic))]
+                           [offset (in-value (hash-ref offsets pid))]
+                           [b (in-list (FetchResponsePartition-batches p))]
+                           [r (in-vector (batch-records b))]
+                           #:when (>= (record-offset r) offset))
+               r))
+           (define offsets
+             (for*/fold ([offsets (hash)])
+                        ([(topic partitions) (in-hash (FetchResponse-topics res))]
+                         [p (in-list partitions)]
+                         [b (in-list (FetchResponsePartition-batches p))])
+               (define key (cons topic (FetchResponsePartition-id p)))
+               (define size (batch-size b))
+               (define last-record
+                 (and (not (zero? size))
+                      (vector-ref (batch-records b) (sub1 size))))
+               (if last-record
+                   (hash-set offsets key (add1 (record-offset last-record)))
+                   offsets)))
+           (define topic-partitions
+             (for/hash ([(topic partitions) (in-hash (consumer-topic-partitions c))])
+               (values topic (for/hash ([(pid offset) (in-hash partitions)])
+                               (values pid (hash-ref offsets (cons topic pid) offset))))))
+           (set-consumer-topic-partitions! c topic-partitions)
+           (values 'records records)))
+        (lambda (type data)
+          (case type
+            [(records)
+             (handle-evt
+              (if (zero? (vector-length data))
+                  (alarm-evt deadline #t)
+                  always-evt)
+              (lambda (_)
+                (values type data)))]
+            [else
+             (handle-evt
+              always-evt
+              (lambda (_)
+                (values type data)))]))))))
 
 (define (consumer-commit c)
   (with-handlers* ([coordinator-error?
