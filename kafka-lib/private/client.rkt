@@ -66,7 +66,7 @@
        [else (λ (b) (= (BrokerMetadata-node-id b) node-id))])
      (Metadata-brokers metadata)))
   (unless maybe-broker
-    (raise-argument-error 'get-node-connection "node not found"))
+    (raise-argument-error 'get-node-connection "node-id/c" node-id))
   (force (send c get-connection maybe-broker)))
 
 (define (client-metadata c)
