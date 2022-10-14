@@ -362,6 +362,3 @@
                                          #:id (PartitionData-id p)
                                          #:error-code 3
                                          #:offset -1))))))])))))
-
-(define (pure-evt v)
-  (handle-evt always-evt (λ (_) v)))

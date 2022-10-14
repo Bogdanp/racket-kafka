@@ -152,19 +152,13 @@
            (set-consumer-topic-partitions! c topic-partitions)
            (values 'records records)))
         (lambda (type data)
-          (case type
-            [(records)
+          (match* (type data)
+            [('records (vector))
              (handle-evt
-              (if (zero? (vector-length data))
-                  (alarm-evt deadline #t)
-                  always-evt)
-              (lambda (_)
-                (values type data)))]
-            [else
-             (handle-evt
-              always-evt
-              (lambda (_)
-                (values type data)))]))))))
+              (alarm-evt deadline #t)
+              (λ (_) (values type data)))]
+            [(_ _)
+             (pure-evt type data)]))))))
 
 (define (consumer-commit c)
   (with-handlers* ([coordinator-error?

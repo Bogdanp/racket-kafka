@@ -12,3 +12,12 @@
               [p (in-list (TopicMetadata-partitions t))]
               [pid (in-value (PartitionMetadata-id p))])
     (values (cons topic pid) (PartitionMetadata-leader-id p))))
+
+
+;; evts ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(provide
+ pure-evt)
+
+(define (pure-evt v0 . vs)
+  (handle-evt always-evt (λ (_) (apply values v0 vs))))
