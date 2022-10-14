@@ -266,6 +266,7 @@
 
 (provide
  (struct-out version-range)
+ get-api-versions
  find-best-version)
 
 (struct version-range (min max)
