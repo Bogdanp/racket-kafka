@@ -30,7 +30,7 @@
      #:throttle-time-ms (ref 'ThrottleTimeMs_1 res)
      #:error-code (ref 'ErrorCode_1 res)
      #:error-message (ref 'CompactErrorMessage_1 res)
-     #:cluster-id (ref 'ClusterID_1 res)
+     #:cluster-id (ref 'CompactClusterID_1 res)
      #:controller-id (ref 'ControllerID_1 res)
      #:authorized-operations (integer->authorized-operations
                               (ref 'ClusterAuthorizedOperations_1 res))

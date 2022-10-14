@@ -106,9 +106,11 @@ ListOffsetsResponsePartitionV2 = PartitionID ErrorCode Timestamp Offset;
 ## Metadata (code 3)
 
 MetadataRequestV1 = TopicNames;
+MetadataRequestV2 = TopicNames;
 TopicNames        = ArrayLen TopicName{ArrayLen_1};
 
 MetadataResponseV1 = Brokers ControllerID TopicMetadatas;
+MetadataResponseV2 = Brokers ClusterID ControllerID TopicMetadatas;
 Brokers            = ArrayLen Broker{ArrayLen_1};
 Broker             = NodeID Host Port Rack;
 NodeID             = i32be;
@@ -116,6 +118,7 @@ Host               = String;
 Port               = i32be;
 Rack               = String;
 ControllerID       = i32be;
+ClusterID          = String;
 TopicMetadatas     = ArrayLen TopicMetadata{ArrayLen_1};
 TopicMetadata      = TopicErrorCode TopicName IsInternal PartitionMetadatas;
 TopicErrorCode     = i16be;
@@ -392,8 +395,8 @@ GroupIDs = ArrayLen GroupID{ArrayLen_1};
 DescribeClusterRequestV0           = IncludeClusterAuthorizedOperations Tags;
 IncludeClusterAuthorizedOperations = Bool;
 
-DescribeClusterResponseV0   = ThrottleTimeMs ErrorCode CompactErrorMessage ClusterID ControllerID CompactArrayLen CompactBroker{CompactArrayLen_1} ClusterAuthorizedOperations Tags;
-ClusterID                   = CompactString;
+DescribeClusterResponseV0   = ThrottleTimeMs ErrorCode CompactErrorMessage CompactClusterID ControllerID CompactArrayLen CompactBroker{CompactArrayLen_1} ClusterAuthorizedOperations Tags;
+CompactClusterID            = CompactString;
 CompactBroker               = BrokerID CompactHost Port CompactRack Tags;
 CompactRack                 = CompactString;
 ClusterAuthorizedOperations = i32be;
