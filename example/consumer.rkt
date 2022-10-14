@@ -7,15 +7,21 @@
            (make-client)
            "example-group"
            "example-topic"))
-(for ([_ (in-range 2)])
-  (with-handlers ([exn:break? void])
+(with-handlers ([exn:break? void]
+                [exn:fail? (λ (e) ((error-display-handler) (exn-message e) e))])
+  (let loop ()
     (define-values (type data)
       (sync (consume-evt c)))
-    (println (list type (vector-length data)))
-    (for ([r (in-vector data)])
-      (println (list
-                (record-offset r)
-                (record-key r)
-                (record-value r))))
-    (consumer-commit c)))
+    (case type
+      [(rebalance)
+       (println `(rebalance ,data))]
+      [(records)
+       (println `(records ,(vector-length data)))
+       (for ([r (in-vector data)])
+         (println (list
+                   (record-offset r)
+                   (record-key r)
+                   (record-value r))))])
+    (consumer-commit c)
+    (loop)))
 (consumer-stop c)
