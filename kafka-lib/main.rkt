@@ -70,9 +70,9 @@
     (for/list ([(node-id resources) (in-hash resources-by-node-id)])
       (delay/thread
        (define conn
-           (if node-id
-               (get-node-connection c node-id)
-               (get-connection c)))
+         (if node-id
+             (get-node-connection c node-id)
+             (get-connection c)))
        (define res
          (sync (make-DescribeConfigs-evt conn resources)))
        (DescribedResources-resources res))))
