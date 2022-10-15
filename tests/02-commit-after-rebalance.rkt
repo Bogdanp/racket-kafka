@@ -6,7 +6,7 @@
          rackunit
          rackunit/text-ui)
 
-(define t "01-commit-after-rebalance")
+(define t "02-commit-after-rebalance")
 (define k (make-client))
 
 (run-tests

@@ -7,7 +7,7 @@
          rackunit
          rackunit/text-ui)
 
-(define t "00-publish-consume")
+(define t "01-publish-consume")
 (define k (make-client))
 
 (run-tests

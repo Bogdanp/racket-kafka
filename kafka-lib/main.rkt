@@ -103,7 +103,7 @@
 
 (define (delete-groups c . groups)
   (define deleted-groupss
-    (for/list ([(node-id group-ids) (in-hash (get-groups-by-coordinator groups))])
+    (for/list ([(node-id group-ids) (in-hash (get-groups-by-coordinator c groups))])
       (delay/thread
        (define res
          (sync (make-DeleteGroups-evt (get-node-connection c node-id) group-ids)))
