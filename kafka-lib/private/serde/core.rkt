@@ -5,6 +5,7 @@
                      racket/syntax
                      syntax/parse)
          racket/contract
+         racket/pretty
          "../connection.rkt"
          "../error.rkt"
          "../help.rkt"
@@ -55,6 +56,8 @@
                                                     [ctc  (in-list (syntax-e #'(fld.ctc ...)))]
                                                     #:unless req?)
                                            (list kwd ctc)))
+     #:with (fld-accessor-id ...) (for/list ([fld-id (in-list (syntax-e #'(fld.id ...)))])
+                                    (format-id fld-id "~a-~a" #'id fld-id))
      #'(begin
          (provide
           (contract-out
@@ -62,9 +65,55 @@
            [constructor-id (->* (required-ctor-arg-ctc ...)
                                 (optional-ctor-arg-ctc ...)
                                 id?)]))
-         (struct id (fld.id ...) #:transparent)
+         (struct id (fld.id ...)
+           #:transparent
+           #:methods gen:custom-write
+           [(define write-proc
+              (make-record-constructor-printer
+               (λ (_) 'constructor-id)
+               (λ (_) (list 'fld.kwd ...))
+               (λ (r) (list (fld-accessor-id r) ...))))])
          (define (constructor-id constructor-arg ...)
            (id fld.id ...)))]))
+
+(define ((make-record-constructor-printer get-id get-kwds get-flds) r out mode)
+  (define (do-print port [col #f])
+    (define indent (if col (make-string (add1 col) #\space) " "))
+    (define recur
+      (case mode
+        [(#t) write]
+        [(#f) display]
+        [(0 1) (λ (d p) (print d p mode))]))
+    (define write? (not (integer? mode)))
+    (write-string (if write? "#<" "(") port)
+    (write (get-id r) port)
+    (for ([kwd (in-list (get-kwds r))]
+          [fld (in-list (get-flds r))])
+      (when col
+        (pretty-print-newline port (pretty-print-columns)))
+      (write-string indent port)
+      (fprintf port "~a " kwd)
+      (recur fld port))
+    (write-string (if write? ">" ")") port))
+  (if (and (pretty-printing)
+           (integer? (pretty-print-columns)))
+      ((let/ec esc
+         (define pretty-port
+           (make-tentative-pretty-print-output-port
+            out
+            (- (pretty-print-columns) 1)
+            (lambda ()
+              (esc
+               (lambda ()
+                 (tentative-pretty-print-port-cancel pretty-port)
+                 (define-values (_line col _pos)
+                   (port-next-location out))
+                 (do-print out col))))))
+         (do-print pretty-port)
+         (tentative-pretty-print-port-transfer pretty-port out)
+         void))
+      (do-print out))
+  (void))
 
 (begin-for-syntax
   (define-syntax-class request-arg
