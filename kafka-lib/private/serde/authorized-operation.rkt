@@ -1,6 +1,7 @@
 #lang racket/base
 
-(require racket/contract)
+(require racket/contract
+         racket/list)
 
 (provide
  authorized-operation/c
@@ -13,19 +14,16 @@
   (apply or/c (vector->list operations)))
 
 (define (integer->authorized-operations n)
-  (cond
-    [(negative? n) null]
-    [else
-     (let loop ([i 0] [n n] [ops null])
-       (if (zero? n)
-           (reverse ops)
-           (loop (add1 i)
-                 (arithmetic-shift n -1)
-                 (if (= (bitwise-and n 1) 1)
-                     (cons (get-operation i) ops)
-                     ops))))]))
+  (let loop ([i 0] [n n] [ops null])
+    (if (<= n 0)
+        (remove-duplicates (reverse ops))
+        (loop (add1 i)
+              (arithmetic-shift n -1)
+              (if (= (bitwise-and n 1) 1)
+                  (cons (get-operation i) ops)
+                  ops)))))
 
 (define (get-operation i)
-  (if (> i (vector-length operations))
-      'unknown
-      (vector-ref operations i)))
+  (if (< i (vector-length operations))
+      (vector-ref operations i)
+      'unknown))
