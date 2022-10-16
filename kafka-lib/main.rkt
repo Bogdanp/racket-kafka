@@ -43,6 +43,10 @@
   [describe-groups (-> client? string? ... (listof Group?))]
   [delete-groups (-> client? string? ... (listof DeletedGroup?))]
   [fetch-offsets (-> client? string? GroupOffsets?)]
+  [reset-offsets (-> client?
+                     string?
+                     (hash/c topic&partition/c exact-nonnegative-integer?)
+                     (hash/c topic&partition/c CommitPartitionResult?))]
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
                     (hash/c topic&partition/c PartitionOffset?))]))
@@ -124,6 +128,26 @@
     (Coordinator-node-id
      (find-group-coordinator c group)))
   (sync (make-FetchOffsets-evt (get-node-connection c node-id) group)))
+
+(define (reset-offsets c group offsets)
+  (define node-id
+    (Coordinator-node-id
+     (find-group-coordinator c group)))
+  (define topics
+    (for/fold ([topics (hash)])
+              ([(t&p offset) (in-hash offsets)])
+      (define topic (car t&p))
+      (define pid (cdr t&p))
+      (define req
+        (make-CommitPartition
+         #:id pid
+         #:offset offset))
+      (hash-update topics topic (λ (reqs) (cons req reqs)) null)))
+  (define res-topics
+    (sync (make-Commit-evt (get-node-connection c node-id) group -1 "" topics)))
+  (for*/hash ([(topic partition-ress) (in-hash res-topics)]
+              [partition-res (in-list partition-ress)])
+    (values (cons topic (CommitPartitionResult-id partition-res)) partition-res)))
 
 (define (list-offsets c topic&partitions)
   (define offsetss
