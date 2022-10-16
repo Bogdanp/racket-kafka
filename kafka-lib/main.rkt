@@ -39,9 +39,10 @@
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
   [find-group-coordinator (-> client? string? Coordinator?)]
+  [list-groups (-> client? (listof Group?))]
   [describe-groups (-> client? string? ... (listof Group?))]
   [delete-groups (-> client? string? ... (listof DeletedGroup?))]
-  [list-groups (-> client? (listof Group?))]
+  [fetch-offsets (-> client? string? GroupOffsets?)]
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
                     (hash/c topic&partition/c PartitionOffset?))]))
@@ -92,6 +93,14 @@
 (define (find-group-coordinator c group-id)
   (sync (make-FindCoordinator-evt (get-controller-connection c) group-id)))
 
+(define (list-groups c)
+  (define groupss
+    (for/list ([b (in-list (Metadata-brokers (client-metadata c)))])
+      (delay/thread
+       (define node-id (BrokerMetadata-node-id b))
+       (sync (make-ListGroups-evt (get-node-connection c node-id))))))
+  (apply append (map force groupss)))
+
 (define (describe-groups c . groups)
   (define groupss
     (for/list ([(node-id group-ids) (in-hash (get-groups-by-coordinator c groups))])
@@ -110,13 +119,11 @@
        (DeletedGroups-groups res))))
   (apply append (map force deleted-groupss)))
 
-(define (list-groups c)
-  (define groupss
-    (for/list ([b (in-list (Metadata-brokers (client-metadata c)))])
-      (delay/thread
-       (define node-id (BrokerMetadata-node-id b))
-       (sync (make-ListGroups-evt (get-node-connection c node-id))))))
-  (apply append (map force groupss)))
+(define (fetch-offsets c group)
+  (define node-id
+    (Coordinator-node-id
+     (find-group-coordinator c group)))
+  (sync (make-FetchOffsets-evt (get-node-connection c node-id) group)))
 
 (define (list-offsets c topic&partitions)
   (define offsetss

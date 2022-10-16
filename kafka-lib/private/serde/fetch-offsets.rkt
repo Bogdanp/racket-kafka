@@ -15,7 +15,8 @@
    [topics (hash/c string? (listof GroupPartitionOffset?))]))
 
 (define-request FetchOffsets
-  (group-id topics)
+  (group-id
+   [topics (hash)])
   #:code 9
 
   #:version 1
