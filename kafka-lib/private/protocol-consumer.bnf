@@ -1,8 +1,8 @@
 #lang binfmt
 
 @foreign-parsers "protocol-native.rkt"
-  {Bytes           un-Bytes}
-  {String          un-String}
+  {Bytes  un-Bytes}
+  {String un-String}
   ;
 
 MemberMetadata = Version ArrayLen TopicName{ArrayLen_1} Data;
