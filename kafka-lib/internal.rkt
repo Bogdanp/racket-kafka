@@ -11,7 +11,8 @@
  internal-events?
  (contract-out
   [make-internal-events (-> client? internal-events?)]
-  [stop-internal-events (-> internal-events? void?)]))
+  [stop-internal-events (-> internal-events? void?)]
+  [internal-events-supported? (-> client? boolean?)]))
 
 (define consumer-offsets-topic
   "__consumer_offsets")
@@ -21,14 +22,13 @@
   #:property prop:evt (struct-field-index ch))
 
 (define (make-internal-events c)
-  (define metadata (get-offsets-topic c))
-  (define offsets (make-hasheqv))
-
-
+  (define metadata
+    (get-offsets-topic c))
   (define ch (make-channel))
   (define thd
     (thread
      (lambda ()
+       (define offsets (make-hasheqv))
        (let loop ([deadline 0])
          (define next-deadline
            (sync
@@ -53,6 +53,9 @@
 
 (define (stop-internal-events i)
   (thread-send (internal-events-thd i) '(stop)))
+
+(define (internal-events-supported? c)
+  (and (get-offsets-topic c) #t))
 
 (define (get-internal-events c metadata offsets)
   (define partitions-by-node
