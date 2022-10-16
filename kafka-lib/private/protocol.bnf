@@ -150,11 +150,17 @@ OffsetCommitResponsePartitionV1 = PartitionID ErrorCode;
 OffsetFetchRequestV1          = GroupID ArrayLen OffsetFetchRequestTopicV1{ArrayLen_1};
 OffsetFetchRequestTopicV1     = TopicName ArrayLen OffsetFetchRequestPartitionV1{ArrayLen_1};
 OffsetFetchRequestPartitionV1 = PartitionID;
+OffsetFetchRequestV2          = OffsetFetchRequestV1;
+OffsetFetchRequestV3          = OffsetFetchRequestV2;
+OffsetFetchRequestV4          = OffsetFetchRequestV3;
 
 OffsetFetchResponseV1          = ArrayLen OffsetFetchResponseTopicV1{ArrayLen_1};
 OffsetFetchResponseTopicV1     = TopicName ArrayLen OffsetFetchResponsePartitionV1{ArrayLen_1};
 OffsetFetchResponsePartitionV1 = PartitionID CommittedOffset OffsetFetchMetadata ErrorCode;
 OffsetFetchMetadata            = String;
+OffsetFetchResponseV2          = ArrayLen OffsetFetchResponseTopicV1{ArrayLen_1} ErrorCode;
+OffsetFetchResponseV3          = ThrottleTimeMs ArrayLen OffsetFetchResponseTopicV1{ArrayLen_1} ErrorCode;
+OffsetFetchResponseV4          = OffsetFetchResponseV3;
 
 
 ## FindCoordinator (code 10)

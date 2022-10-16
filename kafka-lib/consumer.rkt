@@ -318,13 +318,13 @@
      (handle-evt
       (make-FetchOffsets-evt conn (consumer-group-id c) topics&partitions)
       (lambda (fetch-res)
-        (for/hash ([(topic partitions) (in-hash fetch-res)])
+        (for/hash ([(topic partitions) (in-hash (GroupOffsets-topics fetch-res))])
           (values topic (for/hash ([part (in-list partitions)])
-                          (define pid (PartitionOffset/Group-id part))
-                          (define err (PartitionOffset/Group-error-code part))
+                          (define pid (GroupPartitionOffset-id part))
+                          (define err (GroupPartitionOffset-error-code part))
                           (unless (zero? err)
                             (raise-server-error err))
-                          (values pid (PartitionOffset/Group-offset part)))))))))
+                          (values pid (GroupPartitionOffset-offset part)))))))))
   (define uncommitted-topic-partitions
     (for/fold ([topics (hash)])
               ([(topic partitions) (in-hash committed-topic-partitions)])
