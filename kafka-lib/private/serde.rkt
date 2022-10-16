@@ -21,6 +21,7 @@
  "serde/find-coordinator.rkt"
  "serde/group.rkt"
  "serde/heartbeat.rkt"
+ "serde/internal.rkt"
  "serde/join-group.rkt"
  "serde/leave-group.rkt"
  "serde/list-groups.rkt"

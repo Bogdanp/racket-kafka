@@ -1,0 +1,49 @@
+#lang binfmt
+
+@foreign-parsers "protocol-native.rkt"
+  {Bytes  un-Bytes}
+  {String un-String}
+  ;
+
+MemberMetadataV0 = MemberID ClientID ClientHost SessionTimeout Subscription Assignment;
+MemberID         = String;
+ClientID         = String;
+ClientHost       = String;
+SessionTimeout   = i32be;
+Subscription     = Bytes;
+Assignment       = Bytes;
+MemberMetadataV1 = MemberID ClientID ClientHost RebalanceTimeout SessionTimeout Subscription Assignment;
+RebalanceTimeout = i32be;
+MemberMetadataV2 = MemberID ClientID ClientHost RebalanceTimeout SessionTimeout Subscription Assignment;
+MemberMetadataV3 = MemberID GroupInstanceID ClientID ClientHost RebalanceTimeout SessionTimeout Subscription Assignment;
+GroupInstanceID  = String;
+
+GroupMetadataKeyV2 = Group;
+Group              = String;
+
+GroupMetadataValueV0  = ProtocolType Generation Protocol Leader ArrayLen MemberMetadataV0{ArrayLen_1};
+ProtocolType          = String;
+Generation            = i32be;
+Protocol              = String;
+Leader                = String;
+GroupMetadataValueV1  = ProtocolType Generation Protocol Leader ArrayLen MemberMetadataV1{ArrayLen_1};
+GroupMetadataValueV2  = ProtocolType Generation Protocol Leader CurrentStateTimestamp ArrayLen MemberMetadataV2{ArrayLen_1};
+CurrentStateTimestamp = i64be;
+GroupMetadataValueV3  = ProtocolType Generation Protocol Leader CurrentStateTimestamp ArrayLen MemberMetadataV3{ArrayLen_1};
+
+OffsetCommitKeyV01 = Group Topic PartitionID;
+Topic              = String;
+PartitionID        = i32be;
+
+OffsetCommitValueV0 = Offset; # Metadata CommitTimestamp;
+OffsetCommitValueV1 = Offset; # Metadata CommitTimestamp ExpireTimestamp;
+OffsetCommitValueV2 = Offset; # Metadata CommitTimestamp;
+OffsetCommitValueV3 = Offset; # LeaderEpoch? Metadata CommitTimestamp;
+
+Offset              = i64be;
+LeaderEpoch         = i32be;
+Metadata            = Bytes;
+CommitTimestamp     = i64be;
+ExpireTimestamp     = i64be;
+
+ArrayLen = i32be;
