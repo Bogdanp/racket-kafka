@@ -163,13 +163,13 @@
   (test-case "group member accessors"
     (define m
       (make-InternalGroupMember
-                  #:id "racket-kafka-35d27953-bcfa-4be9-a5b0-58ae5cebe04a"
-                  #:client-id "racket-kafka"
-                  #:client-host "/172.18.0.1"
-                  #:rebalance-timeout 30000
-                  #:session-timeout 30000
-                  #:subscription #"\0\0\0\0\0\1\0\rexample-topic\0\0\0\0"
-                  #:assignment #"\0\0\0\0\0\1\0\rexample-topic\0\0\0\1\0\0\0\0\0\0\0\0"))
+       #:id "racket-kafka-35d27953-bcfa-4be9-a5b0-58ae5cebe04a"
+       #:client-id "racket-kafka"
+       #:client-host "/172.18.0.1"
+       #:rebalance-timeout 30000
+       #:session-timeout 30000
+       #:subscription #"\0\0\0\0\0\1\0\rexample-topic\0\0\0\0"
+       #:assignment #"\0\0\0\0\0\1\0\rexample-topic\0\0\0\1\0\0\0\0\0\0\0\0"))
     (check-equal?
      (InternalGroupMember-topics m)
      '("example-topic"))
