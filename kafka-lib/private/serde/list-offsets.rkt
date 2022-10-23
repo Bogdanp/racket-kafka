@@ -6,7 +6,7 @@
   ([id exact-nonnegative-integer?]
    [error-code error-code/c]
    [timestamp exact-nonnegative-integer?]
-   [offset exact-nonnegative-integer?]))
+   [offset exact-integer?]))
 
 (define-request ListOffsets
   (topics [isolation-level 'read-committed])
