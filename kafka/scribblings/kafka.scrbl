@@ -328,6 +328,8 @@ batch data internally by topic & partition, and they are thread-safe.
   Typically, you would call this function in a loop to produce a set
   of data, collect the results then @racket[sync] them to ensure
   they've been written to the log.
+
+  Each result event may only be synced at most once.
 }
 
 @defproc[(producer-flush [p producer?]) void?]{
