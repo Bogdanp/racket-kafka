@@ -11,17 +11,16 @@
   (define p (make-producer k
                            #:compression 'none
                            #:flush-interval 10000
-                           #:max-batch-size 100000))
+                           #:max-batch-size 10000))
   (create-topics k (make-CreateTopic #:name t #:partitions 8))
   (time
    (for ([n (in-range N)])
      (produce p t #"k" #"v" #:partition (modulo n 8)))
    (producer-stop p))
-  (delete-topics k t)
   (disconnect-all k))
 
-(define (bench-with-res)
-  (define N 100000)
+(define (bench/sync)
+  (define N 1000000)
   (define t "bench-publish-1M")
   (define k (make-client))
   (define p (make-producer k
@@ -45,19 +44,18 @@
   (delete-topics k t)
   (disconnect-all k))
 
-(bench)
-#;
-(profile-thunk
- #:use-errortrace? #t
- #:threads #t
- #:delay 0.005
- bench)
-
-#;
-(bench-with-res)
-#;
-(profile-thunk
- #:use-errortrace? #t
- #:threads #t
- #:delay 0.05
- bench-with-res)
+(module+ main
+  (require racket/cmdline)
+  (define benchmark bench)
+  (define profile? #f)
+  (command-line
+   #:once-each
+   ["--check-results" "synchronize publish results" (set! benchmark bench/sync)]
+   ["--profile" "turn on profiling" (set! profile? #t)])
+  (if profile?
+      (profile-thunk
+       #:use-errortrace? #t
+       #:threads #t
+       #:delay 0.001
+       benchmark)
+      (benchmark)))
