@@ -42,12 +42,13 @@
   (define batcher
     (thread/suspend-to-kill
      (lambda ()
+       (define st (make-state (make-deadline-evt flush-interval-ms)))
        (define batches (make-hash))
        (define (append! topic pid key value)
          (define t (hash-ref! batches topic make-hasheqv))
          (define b (hash-ref! t pid (λ () (make-batch #:compression compression))))
          (batch-append! b key value))
-       (let loop ([st (make-state (make-deadline-evt flush-interval-ms))])
+       (let loop ()
          (cond
            [(or (state-force-flush? st)
                 (> (state-pending-bytes st) max-batch-bytes)
@@ -57,58 +58,54 @@
              (state-pending-count st)
              (state-pending-bytes st))
             (define start-time (current-inexact-monotonic-milliseconds))
-            (define-values (next-st pending-reqs)
-              (pop-state-pending-reqs st))
-            (define ready-reqs
-              (with-handlers ([exn:fail?
-                               (λ (err)
-                                 (for/list ([r (in-list pending-reqs)])
-                                   (if (ProduceRes? r)
-                                       (struct-copy ProduceRes r [res err])
-                                       r)))])
-                (define evts
-                  (make-produce-evts
-                   client batches
-                   #:acks acks
-                   #:timeout-ms 30000))
-                (define results-by-topic&pid
-                  (for*/hash ([evt (in-list evts)]
-                              [res (in-value (sync evt))]
-                              [t (in-list (ProduceResponse-topics res))]
-                              [p (in-list (ProduceResponseTopic-partitions t))])
-                    (define topic (ProduceResponseTopic-name t))
-                    (define pid (ProduceResponsePartition-id p))
-                    (define topic&pid (cons topic pid))
-                    (define error-code (ProduceResponsePartition-error-code p))
-                    (values topic&pid (if (zero? error-code)
-                                          (make-RecordResult
-                                           #:topic topic
-                                           #:partition p)
-                                          (server-error error-code)))))
-                (for/list ([r (in-list pending-reqs)])
-                  (cond
-                    [(ProduceRes? r)
-                     (define topic (ProduceRes-topic r))
-                     (define pid (ProduceRes-pid r))
-                     (define topic&pid (cons topic pid))
-                     (define partition-res (hash-ref results-by-topic&pid topic&pid #f))
-                     (struct-copy ProduceRes r [res (or partition-res (make-RecordResult
-                                                                       #:topic topic
-                                                                       #:partition (make-ProduceResponsePartition
-                                                                                    #:id pid
-                                                                                    #:error-code 0
-                                                                                    #:offset -1)))])]
-                    [else r]))))
+            (define pending-reqs (pop-state-pending-reqs! st))
+            (define pending-futs (pop-state-pending-futs! st))
+            (with-handlers ([exn:fail?
+                             (lambda (err)
+                               (for ([fut (in-list pending-futs)])
+                                 (resolve fut err)))])
+              (define evts
+                (make-produce-evts
+                 client batches
+                 #:acks acks
+                 #:timeout-ms 30000))
+              (define results-by-topic&pid
+                (for*/hash ([evt (in-list evts)]
+                            [res (in-value (sync evt))]
+                            [t (in-list (ProduceResponse-topics res))]
+                            [p (in-list (ProduceResponseTopic-partitions t))])
+                  (define topic (ProduceResponseTopic-name t))
+                  (define pid (ProduceResponsePartition-id p))
+                  (define topic&pid (cons topic pid))
+                  (define error-code (ProduceResponsePartition-error-code p))
+                  (values topic&pid (if (zero? error-code)
+                                        (make-RecordResult
+                                         #:topic topic
+                                         #:partition p)
+                                        (server-error error-code)))))
+              (for ([fut (in-list pending-futs)])
+                (define topic (Future-topic fut))
+                (define pid (Future-pid fut))
+                (define topic&pid (cons topic pid))
+                (define partition-res (hash-ref results-by-topic&pid topic&pid #f))
+                (define produce-res
+                  (or partition-res
+                      (make-RecordResult
+                       #:topic topic
+                       #:partition (make-ProduceResponsePartition
+                                    #:id pid
+                                    #:error-code 0
+                                    #:offset -1))))
+                (resolve fut produce-res)))
             (define duration
               (- (current-inexact-monotonic-milliseconds) start-time))
             (log-kafka-producer-debug "flush took ~ams" (~r #:precision '(= 2) duration))
             (hash-clear! batches)
-            (loop
-             (reset-state-pending-bytes&count
-              (set-state-deadline
-               (state-unforce-flush
-                (add-state-reqs next-st ready-reqs))
-               (make-deadline-evt flush-interval-ms))))]
+            (add-state-reqs! st pending-reqs)
+            (set-state-deadline-evt! st (make-deadline-evt flush-interval-ms))
+            (set-state-force-flush?! st #f)
+            (reset-state-pending-bytes&count! st)
+            (loop)]
 
            [else
             (apply
@@ -119,7 +116,7 @@
                 (cond
                   [(state-stopped? st)
                    (match-define `(,_ ,_ ... ,nack ,res-ch) msg)
-                   (loop (add-state-req st (FailReq nack res-ch (client-error "stop in progress"))))]
+                   (add-state-reqs! st (FailReq nack res-ch (client-error "stop in progress")))]
 
                   [else
                    (match msg
@@ -128,48 +125,28 @@
                       (define bytes-size
                         (+ (bytes-length key)
                            (bytes-length value)))
-                      (define-values (res res-evt)
-                        (make-ProduceRes topic pid))
-                      (loop
-                       (add-state-pending-req
-                        (add-state-req
-                         (incr-state-pending-bytes&count st bytes-size)
-                         (ProduceReq nack req-ch res-evt))
-                        res))]
+                      (define-values (fut fut-evt)
+                        (make-Future topic pid))
+                      (incr-state-pending-bytes&count! st bytes-size)
+                      (add-state-req! st (ProduceReq nack req-ch fut-evt))
+                      (add-state-fut! st fut)]
 
                      [`(stop ,nack ,res-ch)
-                      (loop (state-force-flush (add-state-pending-req st (StopReq nack res-ch))))]
+                      (add-state-pending-req! st (StopReq nack res-ch))
+                      (set-state-force-flush?! st #t)
+                      (set-state-stopped?! st #t)]
 
                      [`(flush ,nack ,res-ch)
-                      (loop (state-force-flush (add-state-pending-req st (FlushReq nack res-ch))))]
+                      (add-state-pending-req! st (FlushReq nack res-ch))
+                      (set-state-force-flush?! st #t)]
 
                      [msg
-                      (log-kafka-producer-error "invalid message: ~e" msg)
-                      (loop st)])])))
+                      (log-kafka-producer-error "invalid message: ~e" msg)])])))
              (handle-evt
               (state-deadline-evt st)
-              (lambda (_)
-                (loop
-                 (state-force-flush
-                  (set-state-deadline st (make-deadline-evt flush-interval-ms))))))
-             (append
-              (for/list ([r (in-list (state-reqs st))])
-                (define req-evt
-                  (match r
-                    [(ProduceReq _ res-ch evt)     (channel-put-evt res-ch evt)]
-                    [(ProduceRes _ res-ch _ _ res) (channel-put-evt res-ch res)]
-                    [(FlushReq   _ res-ch)         (channel-put-evt res-ch (void))]
-                    [(StopReq    _ res-ch)         (channel-put-evt res-ch (void))]
-                    [(FailReq    _ res-ch err)     (channel-put-evt res-ch err)]))
-                (handle-evt
-                 req-evt
-                 (lambda (_)
-                   (loop (remove-state-req st r)))))
-              (for/list ([r (in-list (state-reqs st))] #:when (Req-nack r))
-                (handle-evt
-                 (Req-nack r)
-                 (lambda (_)
-                   (loop (remove-state-req st r)))))))])))))
+              (λ (_) (set-state-force-flush?! st #t)))
+             (state-evts st))
+            (loop)])))))
   (producer ch batcher))
 
 (define (produce p topic key value #:partition [pid 0])
@@ -206,84 +183,91 @@
    force-flush?
    deadline-evt
    pending-reqs
-   reqs
+   pending-futs
+   evts
    pending-bytes
    pending-count)
-  #:transparent)
+  #:transparent
+  #:mutable)
 
 (define (make-state deadline-evt)
-  (state #f #f deadline-evt null null 0 0))
+  (state #f #f deadline-evt null null null 0 0))
 
-(define (set-state-deadline st deadline-evt)
-  (struct-copy state st [deadline-evt deadline-evt]))
+(define (add-state-pending-req! st req)
+  (set-state-pending-reqs! st (cons req (state-pending-reqs st))))
 
-(define (add-state-pending-req st req)
-  (struct-copy state st [pending-reqs (cons req (state-pending-reqs st))]))
+(define (pop-state-pending-reqs! st)
+  (define pending-reqs (state-pending-reqs st))
+  (begin0 pending-reqs
+    (set-state-pending-reqs! st null)))
 
-(define (pop-state-pending-reqs st)
-  (values
-   (struct-copy state st [pending-reqs null])
-   (state-pending-reqs st)))
+(define (add-state-req! st req)
+  (define nack-evt
+    (handle-evt
+     (Req-nack req)
+     (lambda (_)
+       (remove-state-evt! st nack-evt)
+       (remove-state-evt! st req-evt))))
+  (define req-evt
+    (handle-evt
+     (match req
+       [(ProduceReq _ res-ch evt) (channel-put-evt res-ch evt)]
+       [(FlushReq   _ res-ch)     (channel-put-evt res-ch (void))]
+       [(StopReq    _ res-ch)     (channel-put-evt res-ch (void))]
+       [(FailReq    _ res-ch err) (channel-put-evt res-ch err)])
+     (lambda (_)
+       (remove-state-evt! st nack-evt)
+       (remove-state-evt! st req-evt))))
+  (set-state-evts! st (cons req-evt (cons nack-evt (state-evts st)))))
 
-(define (add-state-req st req)
-  (struct-copy state st [reqs (cons req (state-reqs st))]))
+(define (add-state-reqs! st reqs)
+  (for ([req (in-list reqs)])
+    (add-state-req! st req)))
 
-(define (add-state-reqs st reqs)
-  (struct-copy state st [reqs (append reqs (state-reqs st))]))
+(define (remove-state-evt! st evt)
+  (set-state-evts! st (remq evt (state-evts st))))
 
-(define (remove-state-req st req)
-  (struct-copy state st [reqs (remq req (state-reqs st))]))
+(define (pop-state-pending-futs! st)
+  (define pending-futs (state-pending-futs st))
+  (begin0 pending-futs
+    (set-state-pending-futs! st null)))
 
-(define (state-force-flush st)
-  (struct-copy state st [force-flush? #t]))
+(define (add-state-fut! st fut)
+  (set-state-pending-futs! st (cons fut (state-pending-futs st))))
 
-(define (state-unforce-flush st)
-  (struct-copy state st [force-flush? #f]))
+(define (incr-state-pending-bytes&count! st bytes-amt [count-amt 1])
+  (set-state-pending-bytes! st (+ (state-pending-bytes st) bytes-amt))
+  (set-state-pending-count! st (+ (state-pending-count st) count-amt)))
 
-(define (incr-state-pending-bytes&count st bytes-amt [count-amt 1])
-  (struct-copy state st
-               [pending-bytes (+ (state-pending-bytes st) bytes-amt)]
-               [pending-count (+ (state-pending-count st) count-amt)]))
-
-(define (reset-state-pending-bytes&count st)
-  (struct-copy state st
-               [pending-bytes 0]
-               [pending-count 0]))
+(define (reset-state-pending-bytes&count! st)
+  (set-state-pending-bytes! st 0)
+  (set-state-pending-count! st 0))
 
 
 ;; Req ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (struct Req ([nack #:mutable] res-ch) #:transparent)
 (struct ProduceReq Req (evt) #:transparent)
-(struct ProduceRes Req (topic pid res) #:transparent)
 (struct FlushReq Req () #:transparent)
 (struct StopReq Req () #:transparent)
 (struct FailReq Req (err) #:transparent)
 
-(define (make-ProduceRes topic pid)
-  (define ch (make-channel))
-  (define res (ProduceRes #f ch topic pid (void)))
-  (define res-evt
-    (handle-evt
-     (nack-guard-evt
-      (lambda (nack)
-        (begin0 ch
-          (set-Req-nack! res nack))))
-     (lambda (res-or-exn)
-       (begin0 res-or-exn
-         (when (exn:fail? res-or-exn)
-           (raise res-or-exn))))))
-  (will-register
-   executor
-   res-evt
-   (lambda (_)
-     ;; The `handle-evt' may be GC'd as soon as its handler procedure
-     ;; finishes, so we have to take care not to mutate the nack in
-     ;; that case, lest we cause a deadlock.
-     (unless (Req-nack res)
-       #;(log-kafka-debug "ProduceRes GC: ~e" res)
-       (set-Req-nack! res always-evt))))
-  (values res res-evt))
+
+;; Future ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(struct Future (ch topic pid [garbage? #:mutable])
+  #:transparent
+  #:property prop:evt (struct-field-index ch))
+
+(define (make-Future topic pid)
+  (define fut (Future (make-channel) topic pid #f))
+  (define evt (guard-evt (λ () (Future-ch fut))))
+  (begin0 (values fut evt)
+    (will-register executor evt (λ (_) (set-Future-garbage?! fut #t)))))
+
+(define (resolve fut res)
+  (unless (Future-garbage? fut)
+    (void (thread (λ () (channel-put (Future-ch fut) res))))))
 
 (define executor
   (make-will-executor))
@@ -296,6 +280,8 @@
         (with-handlers ([exn:fail? (λ (e) (log-kafka-producer-warning "will execution failed: ~a" (exn-message e)))])
           (will-execute executor))
         (loop))))))
+
+
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
