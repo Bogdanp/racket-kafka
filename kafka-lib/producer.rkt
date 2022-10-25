@@ -255,18 +255,23 @@
 
 ;; Future ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct Future (ch topic pid [garbage? #:mutable])
+(struct Future (ch topic pid [state #:mutable])
   #:transparent
   #:property prop:evt (struct-field-index ch))
 
 (define (make-Future topic pid)
   (define fut (Future (make-channel) topic pid #f))
-  (define evt (guard-evt (λ () (Future-ch fut))))
+  (define evt (guard-evt (λ ()
+                           (begin0 (Future-ch fut)
+                             (set-Future-state! fut 'guarded)))))
   (begin0 (values fut evt)
-    (will-register executor evt (λ (_) (set-Future-garbage?! fut #t)))))
+    (will-register executor evt (λ (_)
+                                  (unless (eq? (Future-state fut) 'guarded)
+                                    (log-kafka-producer-debug "GC ~e" fut)
+                                    (set-Future-state! fut 'garbage))))))
 
 (define (resolve fut res)
-  (unless (Future-garbage? fut)
+  (unless (eq? (Future-state fut) 'garbage)
     (void (thread (λ () (channel-put (Future-ch fut) res))))))
 
 (define executor
