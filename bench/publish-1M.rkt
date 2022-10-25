@@ -27,7 +27,7 @@
   (define p (make-producer k
                            #:compression 'none
                            #:flush-interval 1000
-                           #:max-batch-size 1000))
+                           #:max-batch-size 10000))
   (create-topics k (make-CreateTopic #:name t #:partitions 8))
   (time
    (for/fold ([evts null])
@@ -53,7 +53,6 @@
  #:delay 0.05
  bench)
 
-#;
 (bench-with-res)
 #;
 (profile-thunk

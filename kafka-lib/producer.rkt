@@ -51,8 +51,8 @@
        (let loop ()
          (cond
            [(or (state-force-flush? st)
-                (> (state-pending-bytes st) max-batch-bytes)
-                (> (state-pending-count st) max-batch-size))
+                (>= (state-pending-bytes st) max-batch-bytes)
+                (>= (state-pending-count st) max-batch-size))
             (log-kafka-producer-debug
              "flushing ~a messages (~a bytes)"
              (state-pending-count st)
