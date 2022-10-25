@@ -61,9 +61,9 @@
                (define bytes-size
                  (+ (bytes-length key)
                     (bytes-length value)))
+               (incr-state-pending-bytes&count! st bytes-size)
                (define-values (fut fut-evt)
                  (make-Future topic pid))
-               (incr-state-pending-bytes&count! st bytes-size)
                (add-state-req! st (ProduceReq nack res-ch fut-evt))
                (add-state-fut! st fut)]
 

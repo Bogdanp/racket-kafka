@@ -15,6 +15,7 @@ func main() {
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": "127.0.0.1",
 		"compression.codec": "none",
+		"linger.ms":         "10000",
 	})
 	if err != nil {
 		panic(err)
