@@ -146,7 +146,10 @@
               (state-deadline-evt st)
               (λ (_) (set-state-force-flush?! st #t)))
              (state-evts st))
-            (loop)])))))
+            (unless (and (state-stopped? st)
+                         (not (state-force-flush? st))
+                         (null? (state-pending-reqs st)))
+              (loop))])))))
   (producer ch batcher))
 
 (define (produce p topic key value #:partition [pid 0])
