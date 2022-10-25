@@ -120,7 +120,7 @@
 
                   [else
                    (match msg
-                     [`(produce ,topic ,pid ,key, value ,nack ,req-ch)
+                     [`(produce ,topic ,pid ,key ,value ,nack ,req-ch)
                       (append! topic pid key value)
                       (define bytes-size
                         (+ (bytes-length key)
