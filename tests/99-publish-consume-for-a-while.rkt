@@ -17,6 +17,7 @@
   #:before
   (lambda ()
     (define k (make-client))
+    (delete-topics k t)
     (create-topics k (make-CreateTopic
                       #:name t
                       #:partitions P))
@@ -43,7 +44,7 @@
                               (lambda (e)
                                 (define code (exn:fail:kafka:server-code e))
                                 (case (error-code-symbol code)
-                                  [(rebalance-in-progress)
+                                  [(coordinator-not-available rebalance-in-progress)
                                    (join-loop)]
                                   [else
                                    (raise e)]))])
@@ -61,9 +62,9 @@
                    (lambda (type data)
                      (case type
                        [(records)
+                        (consumer-commit c)
                         (for ([r (in-vector data)])
                           (channel-put msg-ch (record-value r)))
-                        (consumer-commit c)
                         (loop)]
 
                        [else
