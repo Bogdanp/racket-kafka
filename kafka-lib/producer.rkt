@@ -280,7 +280,6 @@
   (begin0 (values fut evt)
     (will-register executor evt (lambda (_)
                                   (unless (eq? (Future-state fut) 'guarded)
-                                    (log-kafka-producer-debug "GC ~e" fut)
                                     (set-Future-state! fut 'garbage))))))
 
 (define (resolve fut res)
