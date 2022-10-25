@@ -42,12 +42,45 @@
   (define batcher
     (thread/suspend-to-kill
      (lambda ()
-       (define st (make-state (make-deadline-evt flush-interval-ms)))
+       (define st (make-state))
        (define batches (make-hash))
        (define (append! topic pid key value)
          (define t (hash-ref! batches topic make-hasheqv))
          (define b (hash-ref! t pid (λ () (make-batch #:compression compression))))
          (batch-append! b key value))
+       (define (process-message msg)
+         (cond
+           [(state-stopped? st)
+            (match-define `(,_ ,_ ... ,nack ,res-ch) msg)
+            (add-state-reqs! st (FailReq nack res-ch (client-error "stop in progress")))]
+
+           [else
+            (match msg
+              [`(produce ,topic ,pid ,key ,value ,nack ,res-ch)
+               (append! topic pid key value)
+               (define bytes-size
+                 (+ (bytes-length key)
+                    (bytes-length value)))
+               (define-values (fut fut-evt)
+                 (make-Future topic pid))
+               (incr-state-pending-bytes&count! st bytes-size)
+               (add-state-req! st (ProduceReq nack res-ch fut-evt))
+               (add-state-fut! st fut)]
+
+              [`(stop ,nack ,res-ch)
+               (add-state-pending-req! st (StopReq nack res-ch))
+               (set-state-force-flush?! st #t)
+               (set-state-stopped?! st #t)]
+
+              [`(flush ,nack ,res-ch)
+               (add-state-pending-req! st (FlushReq nack res-ch))
+               (set-state-force-flush?! st #t)]
+
+              [msg
+               (log-kafka-producer-error "invalid message: ~e" msg)])]))
+       (add-state-evt! st (handle-evt ch process-message))
+       (reset-state-deadline-evt! st flush-interval-ms)
+
        (let loop ()
          (cond
            [(or (state-force-flush? st)
@@ -102,50 +135,13 @@
             (log-kafka-producer-debug "flush took ~ams" (~r #:precision '(= 2) duration))
             (hash-clear! batches)
             (add-state-reqs! st pending-reqs)
-            (set-state-deadline-evt! st (make-deadline-evt flush-interval-ms))
             (set-state-force-flush?! st #f)
             (reset-state-pending-bytes&count! st)
+            (reset-state-deadline-evt! st flush-interval-ms)
             (loop)]
 
            [else
-            (apply
-             sync
-             (handle-evt
-              ch
-              (lambda (msg)
-                (cond
-                  [(state-stopped? st)
-                   (match-define `(,_ ,_ ... ,nack ,res-ch) msg)
-                   (add-state-reqs! st (FailReq nack res-ch (client-error "stop in progress")))]
-
-                  [else
-                   (match msg
-                     [`(produce ,topic ,pid ,key ,value ,nack ,req-ch)
-                      (append! topic pid key value)
-                      (define bytes-size
-                        (+ (bytes-length key)
-                           (bytes-length value)))
-                      (define-values (fut fut-evt)
-                        (make-Future topic pid))
-                      (incr-state-pending-bytes&count! st bytes-size)
-                      (add-state-req! st (ProduceReq nack req-ch fut-evt))
-                      (add-state-fut! st fut)]
-
-                     [`(stop ,nack ,res-ch)
-                      (add-state-pending-req! st (StopReq nack res-ch))
-                      (set-state-force-flush?! st #t)
-                      (set-state-stopped?! st #t)]
-
-                     [`(flush ,nack ,res-ch)
-                      (add-state-pending-req! st (FlushReq nack res-ch))
-                      (set-state-force-flush?! st #t)]
-
-                     [msg
-                      (log-kafka-producer-error "invalid message: ~e" msg)])])))
-             (handle-evt
-              (state-deadline-evt st)
-              (λ (_) (set-state-force-flush?! st #t)))
-             (state-evts st))
+            (apply sync (state-evts st))
             (unless (and (state-stopped? st)
                          (not (state-force-flush? st))
                          (null? (state-pending-reqs st)))
@@ -193,8 +189,8 @@
   #:transparent
   #:mutable)
 
-(define (make-state deadline-evt)
-  (state #f #f deadline-evt null null null 0 0))
+(define (make-state)
+  (state #f #f #f null null null 0 0))
 
 (define (add-state-pending-req! st req)
   (set-state-pending-reqs! st (cons req (state-pending-reqs st))))
@@ -227,6 +223,9 @@
   (for ([req (in-list reqs)])
     (add-state-req! st req)))
 
+(define (add-state-evt! st evt)
+  (set-state-evts! st (cons evt (state-evts st))))
+
 (define (remove-state-evt! st evt)
   (set-state-evts! st (remq evt (state-evts st))))
 
@@ -246,6 +245,17 @@
   (set-state-pending-bytes! st 0)
   (set-state-pending-count! st 0))
 
+(define (reset-state-deadline-evt! st interval-ms)
+  (remove-state-evt! st (state-deadline-evt st))
+  (define evt
+    (handle-evt
+     (make-deadline-evt interval-ms)
+     (lambda (_)
+       (remove-state-evt! st evt)
+       (set-state-force-flush?! st #t))))
+  (set-state-deadline-evt! st evt)
+  (add-state-evt! st evt))
+
 
 ;; Req ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -264,11 +274,11 @@
 
 (define (make-Future topic pid)
   (define fut (Future (make-channel) topic pid #f))
-  (define evt (guard-evt (λ ()
+  (define evt (guard-evt (lambda ()
                            (begin0 (Future-ch fut)
                              (set-Future-state! fut 'guarded)))))
   (begin0 (values fut evt)
-    (will-register executor evt (λ (_)
+    (will-register executor evt (lambda (_)
                                   (unless (eq? (Future-state fut) 'guarded)
                                     (log-kafka-producer-debug "GC ~e" fut)
                                     (set-Future-state! fut 'garbage))))))

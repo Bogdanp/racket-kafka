@@ -50,9 +50,10 @@
 (profile-thunk
  #:use-errortrace? #t
  #:threads #t
- #:delay 0.05
+ #:delay 0.005
  bench)
 
+#;
 (bench-with-res)
 #;
 (profile-thunk
