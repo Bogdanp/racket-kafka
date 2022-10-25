@@ -10,7 +10,7 @@
   (define k (make-client))
   (define p (make-producer k
                            #:compression 'none
-                           #:flush-interval 1000
+                           #:flush-interval 10000
                            #:max-batch-size 100000))
   (create-topics k (make-CreateTopic #:name t #:partitions 8))
   (time
@@ -25,7 +25,7 @@
   (define t "bench-publish-1M")
   (define k (make-client))
   (define p (make-producer k
-                           #:compression 'gzip
+                           #:compression 'none
                            #:flush-interval 1000
                            #:max-batch-size 1000))
   (create-topics k (make-CreateTopic #:name t #:partitions 8))
