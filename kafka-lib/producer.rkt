@@ -42,12 +42,7 @@
   (define batcher
     (thread/suspend-to-kill
      (lambda ()
-       (define st (make-state))
-       (define batches (make-hash))
-       (define (append! topic pid key value)
-         (define t (hash-ref! batches topic make-hasheqv))
-         (define b (hash-ref! t pid (λ () (make-batch #:compression compression))))
-         (batch-append! b key value))
+       (define st (make-state (λ () (make-batch #:compression compression))))
        (define (process-message msg)
          (cond
            [(state-stopped? st)
@@ -57,11 +52,7 @@
            [else
             (match msg
               [`(produce ,topic ,pid ,key ,value ,nack ,res-ch)
-               (append! topic pid key value)
-               (define bytes-size
-                 (+ (bytes-length key)
-                    (bytes-length value)))
-               (incr-state-pending-bytes&count! st bytes-size)
+               (add-state-message! st topic pid key value)
                (define-values (fut fut-evt)
                  (make-Future topic pid))
                (add-state-req! st (ProduceReq nack res-ch fut-evt))
@@ -91,6 +82,7 @@
              (state-pending-count st)
              (state-pending-bytes st))
             (define start-time (current-inexact-monotonic-milliseconds))
+            (define batches (pop-state-batches! st))
             (define pending-reqs (pop-state-pending-reqs! st))
             (define pending-futs (pop-state-pending-futs! st))
             (with-handlers ([exn:fail?
@@ -133,10 +125,8 @@
             (define duration
               (- (current-inexact-monotonic-milliseconds) start-time))
             (log-kafka-producer-debug "flush took ~ams" (~r #:precision '(= 2) duration))
-            (hash-clear! batches)
             (add-state-reqs! st pending-reqs)
             (set-state-force-flush?! st #f)
-            (reset-state-pending-bytes&count! st)
             (reset-state-deadline-evt! st flush-interval-ms)
             (loop)]
 
@@ -184,13 +174,15 @@
    pending-reqs
    pending-futs
    evts
+   batch-proc
+   batches
    pending-bytes
    pending-count)
   #:transparent
   #:mutable)
 
-(define (make-state)
-  (state #f #f #f null null null 0 0))
+(define (make-state make-batch-proc)
+  (state #f #f #f null null null make-batch-proc (make-hash) 0 0))
 
 (define (add-state-pending-req! st req)
   (set-state-pending-reqs! st (cons req (state-pending-reqs st))))
@@ -237,13 +229,22 @@
 (define (add-state-fut! st fut)
   (set-state-pending-futs! st (cons fut (state-pending-futs st))))
 
-(define (incr-state-pending-bytes&count! st bytes-amt [count-amt 1])
-  (set-state-pending-bytes! st (+ (state-pending-bytes st) bytes-amt))
-  (set-state-pending-count! st (+ (state-pending-count st) count-amt)))
+(define (add-state-message! st topic pid key value)
+  (define t (hash-ref! (state-batches st) topic make-hasheqv))
+  (define b (hash-ref! t pid (state-batch-proc st)))
+  (batch-append! b key value)
+  (define size
+    (+ (bytes-length key)
+       (bytes-length value)))
+  (set-state-pending-bytes! st (+ (state-pending-bytes st) size))
+  (set-state-pending-count! st (add1 (state-pending-count st))))
 
-(define (reset-state-pending-bytes&count! st)
-  (set-state-pending-bytes! st 0)
-  (set-state-pending-count! st 0))
+(define (pop-state-batches! st)
+  (define batches (state-batches st))
+  (begin0 batches
+    (set-state-batches! st (make-hash))
+    (set-state-pending-bytes! st 0)
+    (set-state-pending-count! st 0)))
 
 (define (reset-state-deadline-evt! st interval-ms)
   (remove-state-evt! st (state-deadline-evt st))
@@ -268,19 +269,33 @@
 
 ;; Future ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;; state : (or/c 'ready 'guarded 'resolved)
+;; On `produce', the event associated with a Future is returned to the
+;; user.  If the user discards that event, then we race GC against
+;; future resolution, such that if the event is garbage-collected
+;; before the future is resolved, we avoid trying to send it a result
+;; because we're guaranteed that nobody will be listening for one.
 (struct Future (ch topic pid [state #:mutable])
   #:transparent
   #:property prop:evt (struct-field-index ch))
 
 (define (make-Future topic pid)
-  (define fut (Future (make-channel) topic pid #f))
-  (define evt (guard-evt (lambda ()
-                           (begin0 (Future-ch fut)
-                             (set-Future-state! fut 'guarded)))))
-  (begin0 (values fut evt)
-    (will-register executor evt (lambda (_)
-                                  (unless (eq? (Future-state fut) 'guarded)
-                                    (set-Future-state! fut 'garbage))))))
+  (define fut
+    (Future (make-channel) topic pid 'ready))
+  (define evt
+    (guard-evt
+     (lambda ()
+       ;; The guard-evt may be garbage-collected at the end of this
+       ;; procedure's dynamic extent, so we have to mark the Future as
+       ;; having been guarded to avoid a deadlock.
+       (begin0 (Future-ch fut)
+         (set-Future-state! fut 'guarded)))))
+  (will-register
+   executor evt
+   (lambda (_)
+     (unless (eq? (Future-state fut) 'guarded)
+       (set-Future-state! fut 'garbage))))
+  (values fut evt))
 
 (define (resolve fut res)
   (unless (eq? (Future-state fut) 'garbage)
@@ -294,7 +309,9 @@
   (parameterize ([current-namespace (make-base-empty-namespace)])
     (lambda ()
       (let loop ()
-        (with-handlers ([exn:fail? (λ (e) (log-kafka-producer-warning "will execution failed: ~a" (exn-message e)))])
+        (with-handlers ([exn:fail?
+                         (lambda (e)
+                           (log-kafka-producer-error "will execution failed: ~a" (exn-message e)))])
           (will-execute executor))
         (loop))))))
 
