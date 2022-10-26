@@ -75,7 +75,7 @@
       (thread
        (lambda ()
          (define k (make-client #:id "producer"))
-         (define p (make-producer k #:flush-interval 5))
+         (define p (make-producer k #:flush-interval 500))
          (let loop ([n 0] [evts null])
            (cond
              [(= (length evts) 500)
