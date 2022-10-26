@@ -247,11 +247,14 @@
     (set-state-pending-count! st 0)))
 
 (define (reset-state-deadline-evt! st interval-ms)
+  (define ts (current-inexact-monotonic-milliseconds))
   (remove-state-evt! st (state-deadline-evt st))
   (define evt
     (handle-evt
-     (make-deadline-evt interval-ms)
+     (alarm-evt (+ ts interval-ms) #t)
      (lambda (_)
+       (define delta (- (current-inexact-monotonic-milliseconds) ts))
+       (log-kafka-producer-debug "flush deadline (~ams)" (~r #:precision '(= 2) delta))
        (remove-state-evt! st evt)
        (set-state-force-flush?! st #t))))
   (set-state-deadline-evt! st evt)
@@ -317,9 +320,6 @@
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(define (make-deadline-evt ms)
-  (alarm-evt (+ (current-inexact-milliseconds) ms)))
 
 (define (make-produce-evts
          client batches
