@@ -12,6 +12,7 @@
 ;; iterator ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
+ topic-iterator?
  (contract-out
   [make-topic-iterator (->* (client? string?)
                             (#:initial-offset (or/c 'earliest 'latest exact-nonnegative-integer?))
