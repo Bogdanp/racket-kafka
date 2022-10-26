@@ -278,8 +278,22 @@ AuthorizedOperations     = i32be;
 
 ## ListGroups (code 16)
 
+ListGroupsRequestV3 = Tags;
+ListGroupsRequestV4 = CompactArrayLen StatesFilter{CompactArrayLen_1} Tags;
+StatesFilter        = CompactString;
+
 ListGroupsResponseV0 = ErrorCode ArrayLen ListGroupsGroupV0{ArrayLen_1};
 ListGroupsGroupV0    = GroupID ProtocolType;
+ListGroupsResponseV1 = ThrottleTimeMs ErrorCode ArrayLen ListGroupsGroupV1{ArrayLen_1};
+ListGroupsGroupV1    = GroupID ProtocolType;
+ListGroupsResponseV2 = ThrottleTimeMs ErrorCode ArrayLen ListGroupsGroupV2{ArrayLen_1};
+ListGroupsGroupV2    = GroupID ProtocolType;
+ListGroupsResponseV3 = ThrottleTimeMs ErrorCode CompactArrayLen ListGroupsGroupV3{CompactArrayLen_1} Tags;
+ListGroupsGroupV3    = CompactGroupID CompactProtocolType Tags;
+CompactProtocolType  = CompactString;
+ListGroupsResponseV4 = ThrottleTimeMs ErrorCode CompactArrayLen ListGroupsGroupV4{CompactArrayLen_1} Tags;
+ListGroupsGroupV4    = CompactGroupID CompactProtocolType CompactGroupState Tags;
+CompactGroupState    = CompactString;
 
 
 ## SaslHandshake (code 17)
