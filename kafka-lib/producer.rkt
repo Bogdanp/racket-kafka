@@ -46,12 +46,12 @@
        (define (process-message msg)
          (cond
            [(state-stopped? st)
-            (match-define `(,_ ,_ ... ,nack ,res-ch) msg)
+            (match-define `(,_ ,nack ,res-ch ,_ ...) msg)
             (add-state-reqs! st (FailReq nack res-ch (client-error "stop in progress")))]
 
            [else
             (match msg
-              [`(produce ,topic ,pid ,key ,value ,nack ,res-ch)
+              [`(produce ,nack ,res-ch ,topic ,pid ,key ,value)
                (add-state-message! st topic pid key value)
                (define-values (fut fut-evt)
                  (make-Future topic pid))
@@ -139,15 +139,15 @@
   (producer ch batcher))
 
 (define (produce p topic key value #:partition [pid 0])
-  (sync (make-producer-evt p `(produce ,topic ,pid ,key ,value))))
+  (sync (make-producer-evt p 'produce topic pid key value)))
 
 (define (producer-flush p)
-  (sync (make-producer-evt p `(flush))))
+  (sync (make-producer-evt p 'flush)))
 
 (define (producer-stop p)
-  (sync (make-producer-evt p `(stop))))
+  (sync (make-producer-evt p 'stop)))
 
-(define (make-producer-evt p msg)
+(define (make-producer-evt p command . args)
   (define ch (producer-ch p))
   (define thd (producer-batcher p))
   (define res-ch (make-channel))
@@ -156,9 +156,7 @@
     (lambda (nack)
       (thread-resume thd (current-thread))
       (begin0 res-ch
-        (sync
-         (thread-dead-evt thd)
-         (channel-put-evt ch (append msg `(,nack ,res-ch)))))))
+        (channel-put ch (list* command nack res-ch args)))))
    (lambda (res-or-exn)
      (begin0 res-or-exn
        (when (exn:fail? res-or-exn)

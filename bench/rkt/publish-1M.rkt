@@ -26,7 +26,7 @@
   (define p (make-producer k
                            #:compression 'none
                            #:flush-interval 1000
-                           #:max-batch-size 10000))
+                           #:max-batch-size 1000))
   (create-topics k (make-CreateTopic #:name t #:partitions 8))
   (time
    (for/fold ([evts null])
@@ -35,7 +35,6 @@
      (define evts* (cons evt evts))
      (cond
        [(= (length evts*) 1000)
-        (producer-flush p)
         (begin0 null
           (for-each sync evts*))]
        [else
