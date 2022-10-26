@@ -8,6 +8,8 @@
          "error.rkt"
          "serde.rkt")
 
+;; API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (provide
  client?
  make-client
@@ -17,9 +19,6 @@
  get-node-connection
  reload-metadata
  disconnect-all)
-
-
-;; API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (struct client (manager-ch manager))
 
