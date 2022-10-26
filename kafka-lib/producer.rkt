@@ -122,9 +122,9 @@
                                     #:error-code 0
                                     #:offset -1))))
                 (resolve fut produce-res)))
-            (define duration
-              (- (current-inexact-monotonic-milliseconds) start-time))
-            (log-kafka-producer-debug "flush took ~ams" (~r #:precision '(= 2) duration))
+            (log-kafka-producer-debug
+             "flush duration: ~a"
+             (~ms (- (current-inexact-monotonic-milliseconds) start-time)))
             (add-state-reqs! st pending-reqs)
             (set-state-force-flush?! st #f)
             (reset-state-deadline-evt! st flush-interval-ms)
@@ -247,14 +247,15 @@
     (set-state-pending-count! st 0)))
 
 (define (reset-state-deadline-evt! st interval-ms)
-  (define ts (current-inexact-monotonic-milliseconds))
+  (define start-time (current-inexact-monotonic-milliseconds))
   (remove-state-evt! st (state-deadline-evt st))
   (define evt
     (handle-evt
-     (alarm-evt (+ ts interval-ms) #t)
+     (alarm-evt (+ start-time interval-ms) #t)
      (lambda (_)
-       (define delta (- (current-inexact-monotonic-milliseconds) ts))
-       (log-kafka-producer-debug "flush deadline (~ams)" (~r #:precision '(= 2) delta))
+       (log-kafka-producer-debug
+        "flush deadline: ~a"
+        (~ms (- (current-inexact-monotonic-milliseconds) start-time)))
        (remove-state-evt! st evt)
        (set-state-force-flush?! st #t))))
   (set-state-deadline-evt! st evt)
@@ -320,6 +321,9 @@
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (~ms n)
+  (~a (~r #:precision '(= 2) n) "ms"))
 
 (define (make-produce-evts
          client batches
