@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require kafka
-         kafka/producer
+         (submod kafka/producer unsafe)
          profile)
 
 (define (bench)

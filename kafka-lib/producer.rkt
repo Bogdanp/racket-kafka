@@ -26,6 +26,14 @@
   [producer-flush (-> producer? void?)]
   [producer-stop (-> producer? void?)]))
 
+(module+ unsafe
+  (provide
+   producer?
+   make-producer
+   produce
+   producer-flush
+   producer-stop))
+
 (define-logger kafka-producer)
 
 (struct producer (ch batcher)
