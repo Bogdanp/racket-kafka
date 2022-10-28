@@ -3,6 +3,6 @@
 (define collection "test")
 (define deps '("base"
                "binfmt"
-               "kafka-lib"))
-(define build-deps '("rackunit-lib"))
+               "kafka-lib"
+               "rackunit-lib"))
 (define implies '("kafka-lib"))
