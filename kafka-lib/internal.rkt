@@ -21,7 +21,7 @@
                         (handle-evt (internal-events-iter self) parse-events)))
 
 (define (make-internal-events c)
-  (internal-events (make-topic-iterator c consumer-offsets-topic #:initial-offset 'earliest)))
+  (internal-events (make-topic-iterator c consumer-offsets-topic #:offset 'earliest)))
 
 (define (stop-internal-events it)
   (stop-topic-iterator (internal-events-iter it)))

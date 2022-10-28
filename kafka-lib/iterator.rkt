@@ -15,7 +15,8 @@
  topic-iterator?
  (contract-out
   [make-topic-iterator (->* (client? string?)
-                            (#:initial-offset (or/c 'earliest 'latest exact-nonnegative-integer?))
+                            (#:offset (or/c 'earliest 'latest exact-nonnegative-integer?)
+                             #:max-bytes exact-positive-integer?)
                             topic-iterator?)]
   [stop-topic-iterator (-> topic-iterator? void?)]))
 
@@ -24,13 +25,14 @@
   #:property prop:evt (struct-field-index ch))
 
 (define (make-topic-iterator c topic-name
-                             #:initial-offset [initial-offset 'latest])
+                             #:offset [offset 'latest]
+                             #:max-bytes [max-bytes (* 1 1024 1024)])
   (define topic-metadata
     (get-topic c topic-name))
   (unless topic-metadata
     (error 'make-topic-iterator "topic not found"))
   (define offsets
-    (get-offsets c topic-name initial-offset))
+    (get-offsets c topic-name offset))
   (define ch (make-channel))
   (define thd
     (thread
@@ -49,7 +51,7 @@
                (alarm-evt deadline #t)
                (lambda (_)
                  (define records
-                   (get-records c topic-name topic-metadata offsets))
+                   (get-records c topic-name topic-metadata offsets max-bytes))
                  (if (zero? (vector-length records))
                      (pure-evt (+ (current-inexact-monotonic-milliseconds) 1000))
                      (handle-evt
@@ -70,7 +72,7 @@
    (λ (t) (equal? (TopicMetadata-name t) name))
    (Metadata-topics (client-metadata c))))
 
-(define (get-offsets c topic-name initial-offset)
+(define (get-offsets c topic-name offset)
   (define offsets (make-hasheqv))
   (define nodes-by-t&p (collect-nodes-by-topic&pid (client-metadata c) (list topic-name)))
   (define pids-by-node
@@ -83,7 +85,7 @@
       (delay/thread
        (define conn (get-node-connection c node-id))
        (sync (make-ListOffsets-evt conn (hash topic-name (for/hasheqv ([pid (in-list pids)])
-                                                           (values pid initial-offset))))))))
+                                                           (values pid offset))))))))
   (begin0 offsets
     (for* ([promise (in-list promises)]
            [res (in-value (force promise))]
@@ -94,7 +96,7 @@
         (raise-server-error (PartitionOffset-error-code part)))
       (hash-set! offsets pid (PartitionOffset-offset part)))))
 
-(define (get-records c topic-name metadata offsets)
+(define (get-records c topic-name metadata offsets max-bytes)
   (define partitions-by-node
     (for/fold ([nodes (hasheqv)])
               ([p (in-list (TopicMetadata-partitions metadata))])
@@ -113,7 +115,7 @@
     (for/list ([(node-id partitions) (in-hash partitions-by-node)])
       (delay/thread
        (define topic-partitions (hash topic-name partitions))
-       (sync (make-Fetch-evt (get-node-connection c node-id) topic-partitions 1000)))))
+       (sync (make-Fetch-evt (get-node-connection c node-id) topic-partitions 1000 0 max-bytes)))))
   (define responses
     (for/list ([promise (in-list response-promises)])
       (with-handlers ([exn:fail? (λ (e)

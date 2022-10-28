@@ -3,9 +3,11 @@
 (require kafka
          kafka/internal)
 
-(define events
-  (make-internal-events (make-client)))
-(let loop ()
-  (for ([event (in-list (sync events))])
-    (println event))
-  (loop))
+(define c (make-client))
+(define it (make-internal-events c))
+(with-handlers ([exn:break? void])
+  (let loop ()
+    (for ([event (in-vector (sync it))])
+      (println event))
+    (loop)))
+(disconnect-all c)
