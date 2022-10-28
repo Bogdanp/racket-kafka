@@ -1,10 +1,10 @@
 #lang racket/base
 
-(require binfmt/runtime/parser
+(require binfmt/runtime/error
+         binfmt/runtime/parser
          binfmt/runtime/res
          binfmt/runtime/unparser
          racket/port
-         (prefix-in proto: "batch.bnf")
          (prefix-in b: "batch.rkt"))
 
 (provide
@@ -12,16 +12,30 @@
   [parse-records Records]
   [unparse-records un-Records]))
 
+;; Clients may set a limit on the size of the data returned by a
+;; Fetch.  Kafka doesn't preprocess batches and simply lifts them off
+;; disk, so it's likely that a set of records will contain truncated
+;; batches.  So, this procedure has to treat parse failures as signals
+;; that all the batches that could have been read, have been.
+;;
+;; xref: https://kafka.apache.org/documentation/#impl_reads
 (define (parse-records in)
   (res-bind
    (parse-i32be in)
    (lambda (len)
-     (with-handlers ([exn:fail? (λ (e) (err (exn-message e)))])
-       (define batches-in (make-limited-input-port in len #f))
-       (let loop ([batches null])
-         (if (eof-object? (peek-byte batches-in))
-             (ok (reverse batches))
-             (loop (cons (b:read-batch batches-in) batches))))))))
+     (define batches-in
+       (make-limited-input-port in len #f))
+     (let loop ([batches null])
+       (cond
+         [(eof-object? (peek-byte batches-in))
+          (ok (reverse batches))]
+         [else
+          (define batch
+            (with-handlers ([exn:fail:binfmt? (λ (_) #f)])
+              (b:read-batch batches-in)))
+          (if batch
+              (loop (cons batch batches))
+              (ok (reverse batches)))])))))
 
 (define (unparse-records out v)
   (unparse-i32be out (bytes-length v))

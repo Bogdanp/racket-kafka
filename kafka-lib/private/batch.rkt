@@ -231,17 +231,15 @@
        (case compression
          [(none) (copy-port data-in data-out)]
          [(gzip) (gunzip-through-ports data-in data-out)]
-         [else (error 'read-batch "unsupported compression type: ~a" compression)]))))
+         [else (error 'read-batch "unsupported compression type: ~a" compression)]))
+     (close-output-port data-out)))
   (define base-offset (batch-base-offset the-batch))
   (define size (batch-size the-batch))
   (define records
     (for/vector #:length size ([_ (in-range size)])
       (sync
-       (handle-evt
-        records-in
-        (λ (data)
-          (parse-record (proto:Record data) base-offset)))
-       (handle-evt err-ch raise))))
+       (handle-evt err-ch raise)
+       (handle-evt records-in (λ (data) (parse-record (proto:Record data) base-offset))))))
   (begin0 the-batch
     (set-batch-records! the-batch records)))
 
