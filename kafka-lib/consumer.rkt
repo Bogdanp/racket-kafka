@@ -18,6 +18,7 @@
 
 (provide
  record?
+ record-partition-id
  record-offset
  record-key
  record-value
@@ -131,7 +132,8 @@
                            [b (in-list (FetchResponsePartition-batches p))]
                            [r (in-vector (batch-records b))]
                            #:when (>= (record-offset r) offset))
-               r))
+               (begin0 r
+                 (set-record-partition-id! r pid))))
            (define offsets
              (for*/fold ([offsets (hash)])
                         ([(topic partitions) (in-hash (FetchResponse-topics res))]

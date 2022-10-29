@@ -19,6 +19,7 @@
        (println `(records ,(vector-length data)))
        (for ([r (in-vector data)])
          (println (list
+                   (record-partition-id r)
                    (record-offset r)
                    (record-key r)
                    (record-value r))))])

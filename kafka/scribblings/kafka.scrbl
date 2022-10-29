@@ -246,6 +246,14 @@ Consumers are not thread-safe.
   Returns @racket[#t] when @racket[v] is a @tech{record}.
 }
 
+@defproc[(record-partition-id [r record?]) exact-nonnegative-integer?]{
+  Returns the id of the partition the record belongs to.
+}
+
+@defproc[(record-offset [r record?]) exact-nonnegative-integer?]{
+  Returns the record's partition offset.
+}
+
 @defproc[(record-key [r record?]) (or/c #f bytes?)]{
   Returns the record's key.
 }

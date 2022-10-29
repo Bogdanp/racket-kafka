@@ -12,6 +12,12 @@
 ;; iterator ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
+ record?
+ record-partition-id
+ record-offset
+ record-key
+ record-value
+
  topic-iterator?
  (contract-out
   [make-topic-iterator (->* (client? string?)
@@ -143,6 +149,8 @@
                ([response (in-list responses)]
                 [parts (in-hash-values (FetchResponse-topics response))]
                 [part (in-list parts)]
+                [pid (in-value (FetchResponsePartition-id part))]
                 [batch (in-list (FetchResponsePartition-batches part))]
                 [record (in-vector (batch-records batch))])
-    record))
+    (begin0 record
+      (set-record-partition-id! record pid))))
