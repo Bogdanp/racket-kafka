@@ -30,6 +30,7 @@
                      #:ssl-ctx (or/c #f ssl-client-context?))
                     client?)]
   [client-metadata (-> client? Metadata?)]
+  [reload-metadata (-> client? Metadata?)]
   [disconnect-all (-> client? void?)]
 
   [get-metadata (-> client? string? ... Metadata?)]
