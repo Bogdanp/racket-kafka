@@ -1,6 +1,7 @@
 #lang racket/base
 
 (require racket/contract
+         racket/match
          racket/promise
          "private/batch.rkt"
          "private/client.rkt"
@@ -21,54 +22,41 @@
  topic-iterator?
  (contract-out
   [make-topic-iterator (->* (client? string?)
-                            (#:offset (or/c 'earliest 'latest exact-nonnegative-integer?)
-                             #:max-bytes exact-positive-integer?)
+                            (offset/c)
                             topic-iterator?)]
-  [stop-topic-iterator (-> topic-iterator? void?)]))
+  [reset-topic-iterator! (-> topic-iterator? offset/c void?)]
+  [get-records (->* (topic-iterator?)
+                    (#:max-bytes exact-positive-integer?)
+                    (vectorof record?))]))
 
-(struct topic-iterator (ch [thd #:mutable])
-  #:transparent
-  #:property prop:evt (struct-field-index ch))
+(define offset/c
+  (or/c 'earliest 'latest exact-nonnegative-integer?))
 
-(define (make-topic-iterator c topic-name
-                             #:offset [offset 'latest]
-                             #:max-bytes [max-bytes (* 1 1024 1024)])
-  (define topic-metadata
-    (get-topic c topic-name))
-  (unless topic-metadata
+(struct topic-iterator
+  (client topic [metadata #:mutable] [offsets #:mutable]))
+
+(define (make-topic-iterator c topic [offset 'latest])
+  (define metadata
+    (get-topic c topic))
+  (unless metadata
     (error 'make-topic-iterator "topic not found"))
   (define offsets
-    (get-offsets c topic-name offset))
-  (define ch (make-channel))
-  (define thd
-    (thread
-     (lambda ()
-       (let loop ([deadline 0])
-         (define next-deadline
-           (with-handlers ([exn:break?
-                            (lambda (e)
-                              ((error-display-handler) (format "iterator: ~a" (exn-message e)) e)
-                              (+ (current-inexact-monotonic-milliseconds) 1000))])
-             (sync
-              (handle-evt
-               (thread-receive-evt)
-               (λ (_) #f))
-              (replace-evt
-               (alarm-evt deadline #t)
-               (lambda (_)
-                 (define records
-                   (get-records c topic-name topic-metadata offsets max-bytes))
-                 (if (zero? (vector-length records))
-                     (pure-evt (+ (current-inexact-monotonic-milliseconds) 1000))
-                     (handle-evt
-                      (channel-put-evt ch records)
-                      (λ (_) (current-inexact-monotonic-milliseconds)))))))))
-         (when next-deadline
-           (loop next-deadline))))))
-  (topic-iterator ch thd))
+    (get-offsets c topic offset))
+  (topic-iterator c topic metadata offsets))
 
-(define (stop-topic-iterator i)
-  (thread-send (topic-iterator-thd i) '(stop)))
+(define (reset-topic-iterator! it offset)
+  (match-define (topic-iterator c topic _ _) it)
+  (define metadata (get-topic c topic))
+  (unless metadata
+    (error 'reset-topic-iterator! "topic not found"))
+  (define offsets
+    (get-offsets c topic offset))
+  (set-topic-iterator-metadata! it metadata)
+  (set-topic-iterator-offsets! it offsets))
+
+(define (get-records it #:max-bytes [max-bytes (* 1 1024 1024)])
+  (match-define (topic-iterator c topic metadata offsets) it)
+  (get-records* c topic metadata offsets max-bytes))
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -76,7 +64,7 @@
 (define (get-topic c name)
   (findf
    (λ (t) (equal? (TopicMetadata-name t) name))
-   (Metadata-topics (client-metadata c))))
+   (Metadata-topics (reload-metadata c))))
 
 (define (get-offsets c topic-name offset)
   (define offsets (make-hasheqv))
@@ -102,7 +90,7 @@
         (raise-server-error (PartitionOffset-error-code part)))
       (hash-set! offsets pid (PartitionOffset-offset part)))))
 
-(define (get-records c topic-name metadata offsets max-bytes)
+(define (get-records* c topic-name metadata offsets max-bytes)
   (define partitions-by-node
     (for/fold ([nodes (hasheqv)])
               ([p (in-list (TopicMetadata-partitions metadata))])

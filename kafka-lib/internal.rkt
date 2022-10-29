@@ -9,22 +9,20 @@
 (provide
  internal-events?
  (contract-out
+  [internal-events-supported? (-> client? boolean?)]
   [make-internal-events (-> client? internal-events?)]
-  [stop-internal-events (-> internal-events? void?)]
-  [internal-events-supported? (-> client? boolean?)]))
+  [get-events (-> internal-events? vector?)]))
 
 (define consumer-offsets-topic
   "__consumer_offsets")
 
-(struct internal-events (iter)
-  #:property prop:evt (lambda (self)
-                        (handle-evt (internal-events-iter self) parse-events)))
+(struct internal-events (iter))
 
 (define (make-internal-events c)
-  (internal-events (make-topic-iterator c consumer-offsets-topic #:offset 'earliest)))
+  (internal-events (make-topic-iterator c consumer-offsets-topic 'earliest)))
 
-(define (stop-internal-events it)
-  (stop-topic-iterator (internal-events-iter it)))
+(define (get-events ie)
+  (parse-events (get-records (internal-events-iter ie))))
 
 (define (internal-events-supported? c)
   (and (get-offsets-topic c) #t))
