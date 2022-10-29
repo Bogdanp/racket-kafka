@@ -1,7 +1,6 @@
 #lang racket/base
 
-(require binfmt/runtime/error
-         binfmt/runtime/parser
+(require binfmt/runtime/parser
          binfmt/runtime/res
          binfmt/runtime/unparser
          racket/port
@@ -11,6 +10,8 @@
  (rename-out
   [parse-records Records]
   [unparse-records un-Records]))
+
+(define-logger kafka-batch)
 
 ;; Clients may set a limit on the size of the data returned by a
 ;; Fetch.  Kafka doesn't preprocess batches and simply lifts them off
@@ -31,7 +32,10 @@
           (ok (reverse batches))]
          [else
           (define batch
-            (with-handlers ([exn:fail:binfmt? (λ (_) #f)])
+            (with-handlers ([exn:fail?
+                             (lambda (e)
+                               (begin0 #f
+                                 (log-kafka-batch-warning "truncated batch: ~a" (exn-message e))))])
               (b:read-batch batches-in)))
           (if batch
               (loop (cons batch batches))
