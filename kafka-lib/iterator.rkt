@@ -89,7 +89,9 @@
       (define pid (PartitionOffset-id part))
       (unless (zero? (PartitionOffset-error-code part))
         (raise-server-error (PartitionOffset-error-code part)))
-      (hash-set! offsets pid (PartitionOffset-offset part)))))
+      (hash-set! offsets pid (if (symbol? offset)
+                                 (PartitionOffset-offset part)
+                                 offset)))))
 
 (define (get-records* c topic-name metadata offsets max-bytes)
   (define partitions-by-node
@@ -118,28 +120,26 @@
                                      ((error-display-handler)
                                       (format "get-internal-events: ~a" (exn-message e))
                                       e)))])
-        (define response (force promise))
-        (begin0 response
-          (for* ([parts (in-hash-values (FetchResponse-topics response))]
-                 [part (in-list parts)]
-                 [b (in-list (FetchResponsePartition-batches part))])
-            (define pid (FetchResponsePartition-id part))
-            (define size (batch-size b))
-            (unless (zero? size)
-              (define last-record (vector-ref (batch-records b) (sub1 size)))
-              (hash-set! offsets pid (add1 (record-offset last-record)))))))))
-  (define num-records
-    (for*/sum ([response (in-list responses)]
-               [parts (in-hash-values (FetchResponse-topics response))]
-               [part (in-list parts)]
-               [batch (in-list (FetchResponsePartition-batches part))])
-      (vector-length (batch-records batch))))
-  (for*/vector #:length num-records
-               ([response (in-list responses)]
-                [parts (in-hash-values (FetchResponse-topics response))]
-                [part (in-list parts)]
-                [pid (in-value (FetchResponsePartition-id part))]
-                [batch (in-list (FetchResponsePartition-batches part))]
-                [record (in-vector (batch-records batch))])
-    (begin0 record
-      (set-record-partition-id! record pid))))
+        (force promise))))
+  (define records
+    (for*/vector ([response (in-list responses)]
+                  #:when response
+                  [parts (in-hash-values (FetchResponse-topics response))]
+                  [part (in-list parts)]
+                  [pid (in-value (FetchResponsePartition-id part))]
+                  [batch (in-list (FetchResponsePartition-batches part))]
+                  [record (in-vector (batch-records batch))]
+                  #:when (>= (record-offset record) (hash-ref offsets pid 0)))
+      (begin0 record
+        (set-record-partition-id! record pid))))
+  (begin0 records
+    (for* ([response (in-list responses)]
+           #:when response
+           [parts (in-hash-values (FetchResponse-topics response))]
+           [part (in-list parts)]
+           [b (in-list (FetchResponsePartition-batches part))])
+      (define pid (FetchResponsePartition-id part))
+      (define size (batch-size b))
+      (unless (zero? size)
+        (define last-record (vector-ref (batch-records b) (sub1 size)))
+        (hash-set! offsets pid (add1 (record-offset last-record)))))))
