@@ -6,11 +6,14 @@
  (struct-out record)
  parse-record)
 
-(struct record ([partition-id #:mutable] offset key value))
+(struct record ([partition-id #:mutable] offset timestamp key value))
 
-(define (parse-record r [base-offset 0])
+(define (parse-record r
+                      [base-offset 0]
+                      [base-timestamp 0])
   (record
    #f
    (+ base-offset (ref 'OffsetDelta_1 r))
+   (+ base-timestamp (ref 'TimestampDelta_1 r))
    (ref 'Key_1 r)
    (ref 'Value_1 r)))

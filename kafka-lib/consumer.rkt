@@ -20,6 +20,7 @@
  record?
  record-partition-id
  record-offset
+ record-timestamp
  record-key
  record-value
 

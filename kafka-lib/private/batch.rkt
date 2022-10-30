@@ -234,12 +234,15 @@
          [else (error 'read-batch "unsupported compression type: ~a" compression)]))
      (close-output-port data-out)))
   (define base-offset (batch-base-offset the-batch))
+  (define base-timestamp (batch-first-timestamp the-batch))
   (define size (batch-size the-batch))
   (define records
     (for/vector #:length size ([_ (in-range size)])
       (sync
        (handle-evt err-ch raise)
-       (handle-evt records-in (λ (data) (parse-record (proto:Record data) base-offset))))))
+       (handle-evt records-in (λ (data)
+                                (define rec (proto:Record data))
+                                (parse-record rec base-offset base-timestamp))))))
   (begin0 the-batch
     (set-batch-records! the-batch records)))
 
