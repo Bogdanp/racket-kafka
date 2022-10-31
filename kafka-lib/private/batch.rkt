@@ -195,7 +195,6 @@
     (batch-append! b #"b" (make-bytes (* 10 1024 1024) 65))
     (check-true (> (batch-len b) (* 20 1024 1024)))))
 
-;; TODO: Validate CRCs.
 (define header-len 49)
 (define (read-batch in)
   (define header (proto:RecordBatch in))
@@ -240,9 +239,11 @@
     (for/vector #:length size ([_ (in-range size)])
       (sync
        (handle-evt err-ch raise)
-       (handle-evt records-in (λ (data)
-                                (define rec (proto:Record data))
-                                (parse-record rec base-offset base-timestamp))))))
+       (handle-evt
+        records-in
+        (lambda (data)
+          (define rec (proto:Record data))
+          (parse-record rec base-offset base-timestamp))))))
   (begin0 the-batch
     (set-batch-records! the-batch records)))
 
