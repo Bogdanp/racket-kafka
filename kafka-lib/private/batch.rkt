@@ -200,8 +200,6 @@
   (define header (proto:RecordBatch in))
   (define data-len
     (- (ref 'BatchLength_1 header) header-len))
-  (define-values (records-in data-out)
-    (make-pipe))
   (define the-batch
     (batch
      (ref 'BaseOffset_1 header)
@@ -219,31 +217,27 @@
      #f ;; data-out
      #f ;; records
      ))
-  (define err-ch
-    (make-channel))
-  (thread
-   (lambda ()
-     (define data-in (make-limited-input-port in data-len #f))
-     (with-handlers ([exn:fail? (λ (e) (channel-put err-ch e))])
-       (define compression
-         (batch-compression the-batch))
-       (case compression
-         [(none) (copy-port data-in data-out)]
-         [(gzip) (gunzip-through-ports data-in data-out)]
-         [else (error 'read-batch "unsupported compression type: ~a" compression)]))
-     (close-output-port data-out)))
+
+  (define data-in (make-limited-input-port in data-len #f))
+  (define compression
+    (batch-compression the-batch))
+  (define records-in
+    (case compression
+      [(none) data-in]
+      [(gzip)
+       (define out (open-output-bytes))
+       (gunzip-through-ports data-in out)
+       (open-input-bytes (get-output-bytes out))]
+      [else
+       (error 'read-batch "unsupported compression type: ~a" compression)]))
+
   (define base-offset (batch-base-offset the-batch))
   (define base-timestamp (batch-first-timestamp the-batch))
   (define size (batch-size the-batch))
   (define records
     (for/vector #:length size ([_ (in-range size)])
-      (sync
-       (handle-evt err-ch raise)
-       (handle-evt
-        records-in
-        (lambda (data)
-          (define rec (proto:Record data))
-          (parse-record rec base-offset base-timestamp))))))
+      (define rec (proto:Record records-in))
+      (parse-record rec base-offset base-timestamp)))
   (begin0 the-batch
     (set-batch-records! the-batch records)))
 
