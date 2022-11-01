@@ -81,7 +81,7 @@
 (define (unparse-batch-bytes out bs)
   (cond
     [(not bs)
-     (unparse-i32be out -1)]
+     (unparse-varint32 out -1)]
     [else
      (res-bind
       (unparse-varint32 out (bytes-length bs))

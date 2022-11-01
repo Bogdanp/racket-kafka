@@ -193,7 +193,51 @@
     (define b (make-batch))
     (batch-append! b #"a" (make-bytes (* 10 1024 1024) 65))
     (batch-append! b #"b" (make-bytes (* 10 1024 1024) 65))
-    (check-true (> (batch-len b) (* 20 1024 1024)))))
+    (check-true (> (batch-len b) (* 20 1024 1024))))
+
+  (test-case "write nulls"
+    (define b (make-batch))
+    (batch-append! b #f #"1" #:timestamp 5)
+    (batch-append! b #"b" #f #:timestamp 20)
+    (define batch-bs
+      (call-with-output-bytes
+       (lambda (out)
+         (write-batch b out))))
+    (define batch-bs-in
+      (open-input-bytes batch-bs))
+    (check-equal?
+     (proto:RecordBatch batch-bs-in)
+     '((BaseOffset_1 . 0)
+       (BatchLength_1 . 65)
+       (PartitionLeaderEpoch_1 . 0)
+       (Magic_1 . 2)
+       (CRC_1 . 2331736347)
+       (BatchAttributes_1 . 0)
+       (LastOffsetDelta_1 . 1)
+       (FirstTimestamp_1 . 5)
+       (MaxTimestamp_1 . 20)
+       (ProducerID_1 . -1)
+       (ProducerEpoch_1 . -1)
+       (BaseSequence_1 . -1)
+       (RecordCount_1 . 2)))
+    (check-equal?
+     (proto:Record batch-bs-in)
+     '((Length_1 . 7)
+       (Attributes_1 . 0)
+       (TimestampDelta_1 . 0)
+       (OffsetDelta_1 . 0)
+       (Key_1 . #f)
+       (Value_1 . #"1")
+       (Headers_1 (HeadersLen_1 . 0) (Header_1))))
+    (check-equal?
+     (proto:Record batch-bs-in)
+     '((Length_1 . 7)
+       (Attributes_1 . 0)
+       (TimestampDelta_1 . 15)
+       (OffsetDelta_1 . 1)
+       (Key_1 . #"b")
+       (Value_1 . #f)
+       (Headers_1 (HeadersLen_1 . 0) (Header_1))))))
 
 (define header-len 49)
 (define (read-batch in)
