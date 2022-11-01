@@ -324,8 +324,8 @@ batch data internally by topic & partition, and they are thread-safe.
 
 @defproc[(produce [p producer?]
                   [topic string?]
-                  [k bytes?]
-                  [v bytes?]
+                  [k (or/c #f bytes?)]
+                  [v (or/c #f bytes?)]
                   [#:partition partition exact-nonnegative-integer? 0]) evt?]{
 
   Returns a @sync-evt that is ready for synchronization after a new

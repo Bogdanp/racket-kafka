@@ -20,7 +20,7 @@
                        #:max-batch-bytes exact-positive-integer?
                        #:max-batch-size exact-positive-integer?)
                       producer?)]
-  [produce (->* (producer? string? bytes? bytes?)
+  [produce (->* (producer? string? (or/c #f bytes?) (or/c #f bytes?))
                 (#:partition exact-nonnegative-integer?)
                 evt?)]
   [producer-flush (-> producer? void?)]
@@ -240,8 +240,8 @@
   (define b (hash-ref! t pid (state-batch-proc st)))
   (batch-append! b key value)
   (define size
-    (+ (bytes-length key)
-       (bytes-length value)))
+    (+ (if key (bytes-length key) 0)
+       (if value (bytes-length value) 0)))
   (set-state-pending-bytes! st (+ (state-pending-bytes st) size))
   (set-state-pending-count! st (add1 (state-pending-count st))))
 
