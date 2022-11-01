@@ -133,17 +133,23 @@
   (res-bind
    (parse-varint32 in)
    (lambda (len)
-     (res-bind
-      (expect 'batch-string len in)
-      (compose1 ok bytes->string/utf-8)))))
+     (cond
+       [(= len -1) (ok #f)]
+       [else (res-bind
+              (expect 'batch-string len in)
+              (compose1 ok bytes->string/utf-8))]))))
 
 (define (unparse-batch-string out s)
-  (define bs (string->bytes/utf-8 s))
-  (res-bind
-   (unparse-varint32 out (bytes-length bs))
-   (lambda (_)
-     (begin0 (ok s)
-       (write-bytes bs out)))))
+  (cond
+    [(not s)
+     (unparse-varint32 out -1)]
+    [else
+     (define bs (string->bytes/utf-8 s))
+     (res-bind
+      (unparse-varint32 out (bytes-length bs))
+      (lambda (_)
+        (begin0 (ok s)
+          (write-bytes bs out))))]))
 
 (define (parse-compact-string in)
   (res-bind
