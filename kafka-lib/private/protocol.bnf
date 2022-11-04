@@ -81,7 +81,7 @@ FetchPartitionV4 = PartitionID FetchOffset MaxBytes;
 PartitionID      = i32be;
 FetchOffset      = i64be;
 
-FetchResponseV4          = ThrottleTimeMs ArrayLen FetchResponseDataV4{ArrayLen_1};
+FetchResponseV4          = ThrottleTimeMs ArrayLen FetchResponseDataV4{ArrayLen_1}; # unused, see `serde/fetch.rkt'
 FetchResponseDataV4      = TopicName ArrayLen FetchResponsePartitionV4{ArrayLen_1};
 FetchResponsePartitionV4 = PartitionID ErrorCode HighWatermark LastStableOffset ArrayLen AbortedTransaction{ArrayLen_1} Records;
 HighWatermark            = i64be;

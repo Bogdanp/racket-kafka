@@ -11,15 +11,6 @@
   [parse-records Records]
   [unparse-records un-Records]))
 
-(define-logger kafka-batch)
-
-;; Clients may set a limit on the size of the data returned by a
-;; Fetch.  Kafka doesn't preprocess batches and simply lifts them off
-;; disk, so it's likely that a set of records will contain truncated
-;; batches.  So, this procedure has to treat parse failures as signals
-;; that all the batches that could have been read, have been.
-;;
-;; xref: https://kafka.apache.org/documentation/#impl_reads
 (define (parse-records in)
   (res-bind
    (parse-i32be in)
@@ -32,10 +23,7 @@
           (ok (reverse batches))]
          [else
           (define batch
-            (with-handlers ([exn:fail?
-                             (lambda (e)
-                               (begin0 #f
-                                 (log-kafka-batch-warning "truncated batch: ~a" (exn-message e))))])
+            (with-handlers ([exn:fail? (λ (_) #f)])
               (b:read-batch batches-in)))
           (if batch
               (loop (cons batch batches))

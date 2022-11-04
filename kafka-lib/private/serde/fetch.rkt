@@ -1,6 +1,8 @@
 #lang racket/base
 
-(require racket/contract
+(require binfmt/runtime/parser
+         binfmt/runtime/res
+         racket/contract
          "core.rkt")
 
 (define-record FetchResponsePartition
@@ -28,7 +30,7 @@
   #:code 1
 
   #:version 4
-  #:response proto:FetchResponseV4
+  #:response read-FetchResponseV4
   (lambda (topic-partitions max-wait-ms min-bytes max-bytes isolation-level)
     (with-output-bytes
       (proto:un-FetchRequestV4
@@ -61,3 +63,36 @@
                      #:last-stable-offset (ref 'LastStableOffset_1 p)
                      #:batches (ref 'Records_1 p))))
                 (values topic parts)))))
+
+;; Kafka simply lifts batches off disk, so it's likely that responses
+;; will be truncated.  This procedure has to treat parse failures as
+;; signals that all the data that could have been read, has been.
+;;
+;; xref: https://kafka.apache.org/documentation/#impl_reads
+(define (read-FetchResponseV4 in)
+  ;; ThrottleTimeMs
+  (res-bind
+   (parse-i32be in)
+   (lambda (throttle-time-ms)
+     ;; ArrayLen
+     (res-bind
+      (parse-i32be in)
+      (lambda (len)
+        ;; FetchResponseDataV4{ArrayLen_1}
+        (define topics
+          (let loop ([remaining len] [topics null])
+            (cond
+              [(> remaining 0)
+               (define topic
+                 (with-handlers ([exn:fail? (λ (_) #f)])
+                   (proto:FetchResponseDataV4 in)))
+               (if topic
+                   (loop
+                    (sub1 remaining)
+                    (cons topic topics))
+                   (reverse topics))]
+              [else
+               (reverse topics)])))
+        `((ThrottleTimeMs_1 . ,throttle-time-ms)
+          (ArrayLen_1 . ,len)
+          (FetchResponseDataV4_1 . ,topics)))))))
