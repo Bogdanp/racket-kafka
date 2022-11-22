@@ -26,7 +26,7 @@
                      #:sasl-mechanism&ctx (or/c
                                            #f
                                            (list/c 'plain string?)
-                                           (list/c symbol? sasl-ctx?))
+                                           (list/c symbol? sasl-ctx-proc/c))
                      #:ssl-ctx (or/c #f ssl-client-context?))
                     client?)]
   [client-metadata (-> client? Metadata?)]
@@ -51,6 +51,14 @@
   [list-offsets (-> client?
                     (hash/c topic&partition/c (or/c 'earliest 'latest exact-nonnegative-integer?))
                     (hash/c topic&partition/c PartitionOffset?))]))
+
+;; auth ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(provide
+ sasl-ctx-proc/c)
+
+(define sasl-ctx-proc/c
+  (-> string? (integer-in 0 65535) sasl-ctx?))
 
 
 ;; admin ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

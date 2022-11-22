@@ -35,7 +35,7 @@
         (set! bootstrap-conn (connect id host port ssl-ctx)))
       (lambda ()
         (when sasl-mechanism&ctx
-          (apply authenticate bootstrap-conn sasl-mechanism&ctx))
+          (apply authenticate host port bootstrap-conn sasl-mechanism&ctx))
         (sync (make-Metadata-evt bootstrap-conn null)))
       (lambda ()
         (disconnect bootstrap-conn))))
@@ -82,15 +82,12 @@
 
 (define ((make-manager manager-ch client-id sasl-mechanism&ctx ssl-ctx metadata))
   (define (connect* broker)
-    (define conn
-      (connect
-       client-id
-       (BrokerMetadata-host broker)
-       (BrokerMetadata-port broker)
-       ssl-ctx))
+    (define host (BrokerMetadata-host broker))
+    (define port (BrokerMetadata-port broker))
+    (define conn (connect client-id host port ssl-ctx))
     (begin0 conn
       (when sasl-mechanism&ctx
-        (apply authenticate conn sasl-mechanism&ctx))))
+        (apply authenticate host port conn sasl-mechanism&ctx))))
   (define (enliven broker conn)
     (if (connected? conn) conn (connect* broker)))
   (let loop ([st (make-state metadata)])
@@ -277,7 +274,7 @@
       [else
        (values best least-reqs)])))
 
-(define (authenticate conn mechanism ctx)
+(define (authenticate host port conn mechanism ctx)
   (sync (make-SaslHandshake-evt conn mechanism))
   (case mechanism
     [(plain)
@@ -287,20 +284,21 @@
            ctx))
      (sync (make-SaslAuthenticate-evt conn req))]
     [else
-     (let loop ()
-       (case (sasl-state ctx)
-         [(done)
-          (void)]
-         [(error)
-          (error 'authenticate "SASL: unexpected error")]
-         [(receive)
-          (error 'authenticate "SASL: receive not supported")]
-         [(send/receive)
-          (define req (sasl-next-message ctx))
-          (define res (sync (make-SaslAuthenticate-evt conn req)))
-          (sasl-receive-message ctx (SaslAuthenticateResponse-data res))
-          (loop)]
-         [(send/done)
-          (define req (sasl-next-message ctx))
-          (sync (make-SaslAuthenticate-evt conn req))]))])
+     (let ([ctx (ctx host port)])
+       (let loop ()
+         (case (sasl-state ctx)
+           [(done)
+            (void)]
+           [(error)
+            (error 'authenticate "SASL: unexpected error")]
+           [(receive)
+            (error 'authenticate "SASL: receive not supported")]
+           [(send/receive)
+            (define req (sasl-next-message ctx))
+            (define res (sync (make-SaslAuthenticate-evt conn req)))
+            (sasl-receive-message ctx (SaslAuthenticateResponse-data res))
+            (loop)]
+           [(send/done)
+            (define req (sasl-next-message ctx))
+            (sync (make-SaslAuthenticate-evt conn req))])))])
   (void))

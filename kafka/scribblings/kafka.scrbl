@@ -33,7 +33,7 @@ but they may not be shared between @tech{consumers}.
                       [#:bootstrap-port port (integer-in 0 65535) 9092]
                       [#:sasl-mechanism&ctx sasl-ctx (or/c #f
                                                            (list/c 'plain string?)
-                                                           (list/c symbol? sasl-ctx?)) #f]
+                                                           (list/c symbol? sasl-ctx-proc/c)) #f]
                       [#:ssl-ctx ssl-ctx (or/c #f ssl-client-context?) #f]) client?]{
 
   Connects to a Kafka cluster via the server at @racket[host] and
@@ -43,12 +43,18 @@ but they may not be shared between @tech{consumers}.
   connection to the bootstrap host as well as any subsequent
   connections made to other nodes in the cluster.
 
-  When a @racket[ssl-ctx] is provided, it is used to encrypt all
+  When an @racket[ssl-ctx] is provided, it is used to encrypt all
   connections.
 }
 
 @defproc[(disconnect-all [c client?]) void?]{
   Closes all open connections owned by @racket[c].
+}
+
+@defthing[sasl-ctx-proc/c (-> string? (integer-in 0 65535) sasl-ctx?)]{
+  The contract for SASL context factories.  The first argument is the
+  host being authenticated against and the second is the port.  See
+  "example/amazon-msk-auth.rkt" for an example.
 }
 
 @subsection{Errors}
