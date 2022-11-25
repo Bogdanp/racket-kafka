@@ -31,7 +31,9 @@
                     (vectorof record?))]))
 
 (define offset/c
-  (or/c 'earliest 'latest exact-nonnegative-integer?))
+  (or/c 'earliest 'latest
+        (list/c 'timestamp exact-nonnegative-integer?)
+        (list/c 'exact exact-nonnegative-integer?)))
 
 (struct topic-iterator
   (client topic [metadata #:mutable] [offsets #:mutable]))
@@ -71,34 +73,60 @@
    (Metadata-topics (reload-metadata c))))
 
 (define (get-offsets c topic-name offset)
-  (case offset
-    [(earliest latest)
-     (define nodes-by-t&p (collect-nodes-by-topic&pid (client-metadata c) (list topic-name)))
-     (define pids-by-node
-       (for/fold ([nodes (hasheqv)])
-                 ([(t&p node-id) (in-hash nodes-by-t&p)])
-         (define pid (cdr t&p))
-         (hash-update nodes node-id (λ (pids) (cons pid pids)) null)))
-     (define promises
-       (for/list ([(node-id pids) (in-hash pids-by-node)])
-         (delay/thread
-          (define conn (get-node-connection c node-id))
-          (sync (make-ListOffsets-evt conn (hash topic-name (for/hasheqv ([pid (in-list pids)])
-                                                              (values pid offset))))))))
-     (for*/hasheqv ([promise (in-list promises)]
-                    [res (in-value (force promise))]
-                    [parts (in-hash-values res)]
-                    [part (in-list parts)])
-       (define pid (PartitionOffset-id part))
-       (unless (zero? (PartitionOffset-error-code part))
-         (raise-server-error (PartitionOffset-error-code part)))
-       (values pid (PartitionOffset-offset part)))]
-    [else
-     (unless (exact-nonnegative-integer? offset)
-       (raise-argument-error 'get-offsets "(or/c 'earliest 'latest exact-nonnegative-integer?)" offset))
+  (match offset
+    [(or 'earliest 'latest)
+     (find-offsets c topic-name offset)]
+    [`(timestamp ,timestamp)
+     (find-offsets c topic-name timestamp)]
+    [`(exact ,offset)
      (for*/hasheqv ([part (TopicMetadata-partitions (get-topic c topic-name))])
        (define pid (PartitionMetadata-id part))
        (values pid offset))]))
+
+(define (find-offsets c topic-name timestamp)
+  (define nodes-by-t&p
+    (collect-nodes-by-topic&pid
+     (client-metadata c)
+     (list topic-name)))
+  (define pids-by-node
+    (for/fold ([nodes (hasheqv)])
+              ([(t&p node-id) (in-hash nodes-by-t&p)])
+      (define pid (cdr t&p))
+      (hash-update nodes node-id (λ (pids) (cons pid pids)) null)))
+  (define promises
+    (for/list ([(node-id pids) (in-hash pids-by-node)])
+      (delay/thread
+       (define conn (get-node-connection c node-id))
+       (define topics
+         (hash topic-name
+               (for/hasheqv ([pid (in-list pids)])
+                 (values pid timestamp))))
+       (sync (make-ListOffsets-evt conn topics)))))
+  (define offsets
+    (for*/hasheqv ([promise (in-list promises)]
+                   [res (in-value (force promise))]
+                   [parts (in-hash-values res)]
+                   [part (in-list parts)])
+      (define pid (PartitionOffset-id part))
+      (unless (zero? (PartitionOffset-error-code part))
+        (raise-server-error (PartitionOffset-error-code part)))
+      (values pid (PartitionOffset-offset part))))
+  (cond
+    ;; When searching by timestamp, if the timestamp exceeds the
+    ;; timestamp of the latest record, or if the partition has no
+    ;; data, then -1 is returned.  So, perform another set of requests
+    ;; to get the latest offsets for those partitions and fill in the
+    ;; gaps.
+    [(and (exact-integer? timestamp)
+          (ormap negative? (hash-values offsets)))
+     (define latest-offsets
+       (find-offsets c topic-name 'latest))
+     (for/hasheq ([(pid offset) (in-hash offsets)])
+       (values pid (if (negative? offset)
+                       (hash-ref latest-offsets pid 0)
+                       offset)))]
+    [else
+     offsets]))
 
 (define (get-records* c topic-name metadata offsets max-bytes)
   (define partitions-by-node
