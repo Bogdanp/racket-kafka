@@ -275,9 +275,10 @@ be addressed in future versions.
 
 @subsubsection[#:tag "consumer-limitations-compression"]{Compression}
 
-The only supported compression type at the moment is @racket['gzip].
-Fetching a batch of records that is compressed using any other method
-will raise an error.
+At the moment, only @racket['gzip] is supported when producing records
+and only @racket['gzip] and @racket['lz4] are supported when consuming
+records.  Fetching a batch of records that is compressed using any
+other method will fail silently.
 
 @subsubsection[#:tag "conusmer-limitations-assignment"]{Group Assignment}
 
