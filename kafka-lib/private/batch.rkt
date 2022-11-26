@@ -2,6 +2,7 @@
 
 (require file/gunzip
          file/gzip
+         file/lz4
          racket/port
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
@@ -271,6 +272,10 @@
       [(gzip)
        (define out (open-output-bytes))
        (gunzip-through-ports data-in out)
+       (open-input-bytes (get-output-bytes out))]
+      [(lz4)
+       (define out (open-output-bytes))
+       (lz4-decompress-through-ports data-in out)
        (open-input-bytes (get-output-bytes out))]
       [else
        (error 'read-batch "unsupported compression type: ~a" compression)]))
