@@ -79,7 +79,7 @@
     [`(timestamp ,timestamp)
      (find-offsets c topic-name timestamp)]
     [`(exact ,offset)
-     (for*/hasheqv ([part (TopicMetadata-partitions (get-topic c topic-name))])
+     (for/hasheqv ([part (TopicMetadata-partitions (get-topic c topic-name))])
        (define pid (PartitionMetadata-id part))
        (values pid offset))]))
 
@@ -114,9 +114,9 @@
   (cond
     ;; When searching by timestamp, if the timestamp exceeds the
     ;; timestamp of the latest record, or if the partition has no
-    ;; data, then -1 is returned.  So, perform another set of requests
-    ;; to get the latest offsets for those partitions and fill in the
-    ;; gaps.
+    ;; data, then -1 is returned.  In those cases, perform another set
+    ;; of requests to get the latest offsets for those partitions and
+    ;; fill in the gaps.
     [(and (exact-integer? timestamp)
           (ormap negative? (hash-values offsets)))
      (define latest-offsets
