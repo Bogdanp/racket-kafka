@@ -295,10 +295,13 @@
             (error 'authenticate "SASL: receive not supported")]
            [(send/receive)
             (define req (sasl-next-message ctx))
-            (define res (sync (make-SaslAuthenticate-evt conn req)))
+            (define res (sync (make-SaslAuthenticate-evt conn (->bytes req))))
             (sasl-receive-message ctx (SaslAuthenticateResponse-data res))
             (loop)]
            [(send/done)
             (define req (sasl-next-message ctx))
-            (sync (make-SaslAuthenticate-evt conn req))])))])
+            (sync (make-SaslAuthenticate-evt conn (->bytes req)))])))])
   (void))
+
+(define (->bytes s)
+  (if (bytes? s) s (string->bytes/utf-8 s)))
