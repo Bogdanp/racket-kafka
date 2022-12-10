@@ -6,13 +6,11 @@
          racket/format
          racket/port
          racket/string
-         sasl/private/base
+         sasl
          threading)
 
 (provide
  make-aws-msk-iam-ctx)
-
-(struct aws-msk-iam-ctx sasl-ctx ())
 
 ;; https://github.com/aws/aws-msk-iam-auth/blob/2a0e1ef5cb9c08f4526b5642be060b5bfb84d50b/src/main/java/software/amazon/msk/auth/iam/internals/IAMSaslClient.java#L85
 (define (make-aws-msk-iam-ctx #:region region
@@ -25,12 +23,12 @@
      #:access-key-id access-key-id
      #:secret-access-key secret-access-key
      #:server-name server-name))
-  (aws-msk-iam-ctx payload aws-msk-iam-receive))
+  (make-sasl-ctx #f payload aws-msk-iam-receive))
 
-(define (aws-msk-iam-receive ctx msg)
+(define (aws-msk-iam-receive aux msg)
   (if (bytes=? msg #"")
-      (set-sasl! ctx #f 'error)
-      (set-sasl! ctx #f 'done)))
+      (error "authentication failed")
+      (values aux 'done)))
 
 (module+ test
   (require rackunit)
