@@ -32,6 +32,46 @@
       (set-sasl! ctx #f 'error)
       (set-sasl! ctx #f 'done)))
 
+(module+ test
+  (require rackunit)
+
+  (test-case "happy path"
+    (define ctx
+      (make-aws-msk-iam-ctx
+       #:region "us-east-1"
+       #:access-key-id "ACCESSEXAMPLE"
+       #:secret-access-key "supercalifragilisticexpialidocious"
+       #:server-name "example.com"))
+    (check-equal? (sasl-state ctx) 'send/receive)
+    (let ([data (bytes->jsexpr (sasl-next-message ctx))])
+      (define-simple-check (check-ref k e)
+        (equal? (hash-ref data k) e))
+      (check-ref 'action "kafka-cluster:Connect")
+      (check-ref 'host "example.com")
+      (check-ref 'user-agent "racket-kafka")
+      (check-ref 'version "2020_10_22")
+      (check-ref 'x-amz-algorithm "AWS4-HMAC-SHA256")
+      (check-regexp-match #rx"ACCESSEXAMPLE/......../us-east-1/kafka-cluster/aws4_request" (hash-ref data 'x-amz-credential))
+      (check-regexp-match #rx"........T......Z" (hash-ref data 'x-amz-date))
+      (check-ref 'x-amz-expires "900")
+      (check-true (hash-has-key? data 'x-amz-signature))
+      (check-ref 'x-amz-signedheaders "host"))
+    (sasl-receive-message ctx #"ok")
+    (check-equal? (sasl-state ctx) 'done))
+
+  (test-case "fail"
+    (define ctx
+      (make-aws-msk-iam-ctx
+       #:region "us-east-1"
+       #:access-key-id "ACCESSEXAMPLE"
+       #:secret-access-key "supercalifragilisticexpialidocious"
+       #:server-name "example.com"))
+    (check-not-false (sasl-next-message ctx))
+    (check-exn
+     #rx"failed"
+     (λ () (sasl-receive-message ctx #"")))
+    (check-equal? (sasl-state ctx) 'error)))
+
 
 ;; AWSV4 Auth ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -198,8 +238,7 @@
           (write-string (string-upcase (number->string b 16)) out)])))))
 
 (module+ test
-  (require racket/date
-           rackunit)
+  (require racket/date)
 
   (define canon
     (make-canonical-request
