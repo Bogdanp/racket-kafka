@@ -35,6 +35,6 @@ jobs:
           variant: 'CS'
           version: '8.6'
       - run: git lfs pull
-      - run: raco pkg install --auto kafka-lib/ kafka-test/ kafka/
+      - run: raco pkg install --auto amazon-msk-sasl-lib/ kafka-lib/ kafka-test/ kafka/
       - run: env PLTSTDERR='error debug@kafka' raco test --drdr kafka-lib/ kafka-test/
-      - run: env PLTSTDERR='error debug@kafka' raco test tests/
+      - run: env PLTSTDERR='error debug@kafka' raco test amazon-msk-sasl-lib/ tests/
