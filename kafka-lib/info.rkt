@@ -1,7 +1,8 @@
 #lang info
 
-(define collection "kafka")
+(define license 'BSD-3-Clause)
 (define version "0.2")
+(define collection "kafka")
 (define deps '("base"
                ("binfmt" #:version "0.4")
                "lz4-lib"
