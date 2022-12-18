@@ -268,6 +268,10 @@ Consumers are not thread-safe.
   Returns the record's value.
 }
 
+@defproc[(record-headers [r record?]) (hash/c string? bytes?)]{
+  Returns the record's headers.
+}
+
 @subsection[#:tag "consumer-limitations"]{Limitations}
 
 Consumers have several limitations at the moment, some of which will
