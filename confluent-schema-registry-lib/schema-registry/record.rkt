@@ -13,10 +13,10 @@
                      {~optional {~seq #:key key:expr}}
                      {~optional {~seq #:to-key to-key:expr}}
                      {~optional {~seq #:default default:expr}}
-                     {~optional {~seq #:convert-from convert-from-proc:expr}}
-                     {~optional {~seq #:convert-to convert-to-proc:expr}}} ...]
+                     {~optional {~seq #:decode decode-proc:expr}}
+                     {~optional {~seq #:encode encode-proc:expr}}} ...]
              #:with kwd (string->keyword (symbol->string (syntax-e #'id)))
-             #:with (ctor-arg ...) #'{~? (kwd [id {~? (convert-from-proc default) default}])
+             #:with (ctor-arg ...) #'{~? (kwd [id {~? (decode-proc default) default}])
                                          (kwd id)}))
 
   (syntax-parse stx
@@ -35,12 +35,12 @@
            (id fld.id ...))
          (define (jsexpr->id-id e)
            (id
-            ({~? fld.convert-from-proc values}
+            ({~? fld.decode-proc values}
              {~? (hash-ref e {~? fld.key 'fld.id} fld.default)
                  (hash-ref e {~? fld.key 'fld.id})}) ...))
          (define (id->jsexpr-id v)
            (define ks (list {~? {~? fld.to-key fld.key} 'fld.id} ...))
-           (define vs (list ({~? fld.convert-to-proc values} (fld-accessor v)) ...))
+           (define vs (list ({~? fld.encode-proc values} (fld-accessor v)) ...))
            (for/hasheq ([k (in-list ks)]
                         [v (in-list vs)])
              (values k v))))]))

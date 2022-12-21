@@ -20,11 +20,11 @@
    [schema]
    [type #:key 'schemaType
          #:default "AVRO"
-         #:convert-from variant->symbol
-         #:convert-to symbol->variant]
+         #:decode variant->symbol
+         #:encode symbol->variant]
    [references #:default null
-               #:convert-from (λ (rs) (map jsexpr->Reference rs))
-               #:convert-to (λ (rs) (map Reference->jsexpr rs))]))
+               #:decode (λ (rs) (map jsexpr->Reference rs))
+               #:encode (λ (rs) (map Reference->jsexpr rs))]))
 
 ;; schema ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; https://docs.confluent.io/platform/current/schema-registry/develop/api.html#schemas
@@ -140,8 +140,8 @@
   ([compatibility-level #:key 'compatibilityLevel
                         #:to-key 'compatibility
                         #:default "FULL"
-                        #:convert-from variant->symbol
-                        #:convert-to symbol->variant]))
+                        #:decode variant->symbol
+                        #:encode symbol->variant]))
 
 (define (get-config c #:subject [subject #f])
   (jsexpr->Config (get c (if subject (format "/config/~a" subject) "/config"))))
