@@ -4,4 +4,5 @@
 (define version "0.1")
 (define collection "confluent")
 (define deps '("base"
-               "http-easy-lib"))
+               "http-easy-lib"
+               "threading-lib"))
