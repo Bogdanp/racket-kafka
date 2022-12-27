@@ -14,9 +14,9 @@
    [version]))
 
 (define-record Schema
-  ([id]
-   [subject]
-   [version]
+  ([id #:default #f]
+   [subject #:default #f]
+   [version #:default #f]
    [schema]
    [type #:key 'schemaType
          #:default "AVRO"

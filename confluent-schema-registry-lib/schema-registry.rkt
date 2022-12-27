@@ -34,9 +34,10 @@
                      #:references (listof Reference?))
                     (#:type schema-type/c)
                     Schema?)]
-  [Schema-id (-> Schema? exact-integer?)]
-  [Schema-subject (-> Schema? string?)]
-  [Schema-version (-> Schema? exact-integer?)]
+  [Schema-id (-> Schema? (or/c #f exact-integer?))]
+  [Schema-subject (-> Schema? (or/c #f string?))]
+  [Schema-version (-> Schema? (or/c #f exact-integer?))]
+  [Schema-schema (-> Schema? string?)]
   [Schema-type (-> Schema? schema-type/c)]
   [Schema-references (-> Schema? (listof Reference?))]
 
