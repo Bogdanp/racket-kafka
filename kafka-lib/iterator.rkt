@@ -13,15 +13,15 @@
 ;; iterator ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
- record?
- record-partition-id
- record-offset
- record-timestamp
- record-key
- record-value
-
- topic-iterator?
  (contract-out
+  [struct record ([partition-id (or/c #f exact-integer?)]
+                  [offset exact-integer?]
+                  [timestamp exact-integer?]
+                  [key (or/c #f bytes?)]
+                  [value (or/c #f bytes?)]
+                  [headers (hash/c string? bytes?)])]
+
+  [topic-iterator? (-> any/c boolean?)]
   [make-topic-iterator (->* (client? string?)
                             (offset/c)
                             topic-iterator?)]
