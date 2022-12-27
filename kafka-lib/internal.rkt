@@ -3,7 +3,6 @@
 (require racket/contract
          "iterator.rkt"
          "private/client.rkt"
-         "private/record.rkt"
          "private/serde.rkt")
 
 (provide
