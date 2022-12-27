@@ -40,7 +40,7 @@
   [Schema-type (-> Schema? schema-type/c)]
   [Schema-references (-> Schema? (listof Reference?))]
 
-  [get-schema (-> client? exact-integer? hash?)]
+  [get-schema (-> client? exact-integer? Schema?)]
   [get-schema-types (-> client? (listof symbol?))]
   [get-schema-versions (-> client? exact-integer? (listof (cons/c string? exact-integer?)))]
 
