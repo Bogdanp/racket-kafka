@@ -275,7 +275,7 @@
        (open-input-bytes (get-output-bytes out))]
       [(lz4)
        (define out (open-output-bytes))
-       (lz4-decompress-through-ports data-in out)
+       (lz4-decompress-through-ports data-in out #:validate-content? #t)
        (open-input-bytes (get-output-bytes out))]
       [else
        (error 'read-batch "unsupported compression type: ~a" compression)]))
