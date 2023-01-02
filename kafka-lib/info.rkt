@@ -5,6 +5,6 @@
 (define collection "kafka")
 (define deps '("base"
                ["binfmt" #:version "0.4"]
-               "lz4-lib"
+               ["lz4-lib" #:version "1.3"]
                "sasl-lib"))
 (define build-deps '("rackunit-lib"))
