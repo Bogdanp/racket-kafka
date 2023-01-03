@@ -27,4 +27,4 @@
                [k (in-value (ref 'HeaderKey_1 e))]
                #:when k
                [v (in-value (ref 'HeaderValue_1 e))])
-     (values k v))))
+     (values k (or v #"")))))
