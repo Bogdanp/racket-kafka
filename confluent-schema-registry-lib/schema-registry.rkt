@@ -10,7 +10,11 @@
  client?
  exn:fail:schema-registry?
  exn:fail:schema-registry:client?
+ exn:fail:schema-registry:client-code
+ exn:fail:schema-registry:client-message
  exn:fail:schema-registry:server?
+ exn:fail:schema-registry:server-code
+ exn:fail:schema-registry:server-text
  schema-type/c
 
  (contract-out
