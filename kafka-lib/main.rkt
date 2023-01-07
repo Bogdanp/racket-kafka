@@ -43,7 +43,7 @@
   [list-groups (-> client? (listof Group?))]
   [describe-groups (-> client? string? ... (listof Group?))]
   [delete-groups (-> client? string? ... (listof DeletedGroup?))]
-  [fetch-offsets (-> client? string? GroupOffsets?)]
+  [fetch-offsets (->* (client? string?) ((hash/c string? (listof exact-nonnegative-integer?))) GroupOffsets?)]
   [reset-offsets (-> client?
                      string?
                      (hash/c topic&partition/c exact-nonnegative-integer?)
@@ -132,11 +132,11 @@
        (DeletedGroups-groups res))))
   (apply append (map force deleted-groupss)))
 
-(define (fetch-offsets c group)
+(define (fetch-offsets c group [topics (hash)])
   (define node-id
     (Coordinator-node-id
      (find-group-coordinator c group)))
-  (sync (make-FetchOffsets-evt (get-node-connection c node-id) group)))
+  (sync (make-FetchOffsets-evt (get-node-connection c node-id) group topics)))
 
 (define (reset-offsets c group offsets)
   (define node-id
