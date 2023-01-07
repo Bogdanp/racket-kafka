@@ -183,13 +183,16 @@
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define (get-groups-by-coordinator c groups)
+  (define promises
+    (for/list ([group-id (in-list groups)])
+      (delay/thread
+       (find-group-coordinator c group-id))))
   (for/fold ([nodes-to-groups (hasheqv)])
-            ([group-id (in-list groups)])
-    (define coord
-      (find-group-coordinator c group-id))
+            ([group-id (in-list groups)]
+             [promise (in-list promises)])
     (hash-update
      nodes-to-groups
-     (Coordinator-node-id coord)
+     (Coordinator-node-id (force promise))
      (λ (gs) (cons group-id gs))
      null)))
 
