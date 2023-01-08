@@ -55,7 +55,7 @@
                           #:include-deleted? boolean?)
                          (listof string?))]
   [get-subject-versions (-> client? string? (listof exact-integer?))]
-  [get-subject-version (-> client? string? (or/c 'latest exact-integer?) hash?)]
+  [get-subject-version (-> client? string? (or/c 'latest exact-integer?) Schema?)]
   [get-subject-version-referenced-by (-> client? string? exact-integer? (listof exact-integer?))]
   [delete-subject (->* (client? string?)
                        (#:permanently? boolean?)
