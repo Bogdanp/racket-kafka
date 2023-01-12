@@ -33,7 +33,8 @@
 (define offset/c
   (or/c 'earliest 'latest
         (list/c 'timestamp exact-nonnegative-integer?)
-        (list/c 'exact exact-nonnegative-integer?)))
+        (list/c 'exact exact-nonnegative-integer?)
+        (list/c 'recent exact-positive-integer?)))
 
 (struct topic-iterator
   (client topic [metadata #:mutable] [offsets #:mutable]))
@@ -78,6 +79,9 @@
      (find-offsets c topic-name offset)]
     [`(timestamp ,timestamp)
      (find-offsets c topic-name timestamp)]
+    [`(recent ,n)
+     (for/hasheq ([(pid offset) (in-hash (find-offsets c topic-name 'latest))])
+       (values pid (max 0 (- offset n))))]
     [`(exact ,offset)
      (for/hasheqv ([part (TopicMetadata-partitions (get-topic c topic-name))])
        (define pid (PartitionMetadata-id part))
