@@ -21,8 +21,8 @@ It is a work in progress, so expect breaking changes.
 @deftech{Clients} transparently pool connections to brokers within a
 cluster.  Connections are leased from the pool in order of least
 in-progress requests.  Reconnections are handled transparently, and
-connection errors bubble up to the caller.  Clients are thread-safe,
-but they may not be shared between @tech{consumers}.
+connection errors bubble up to the caller.  Despite being thread-safe,
+clients may not be shared between @tech{consumers}.
 
 @defproc[(client? [v any/c]) boolean?]{
   Returns @racket[#t] when @racket[v] is a @tech{client}.
@@ -54,7 +54,7 @@ but they may not be shared between @tech{consumers}.
 @defthing[sasl-ctx-proc/c (-> string? (integer-in 0 65535) sasl-ctx?)]{
   The contract for SASL context factories.  The first argument is the
   host being authenticated against and the second is the port.  See
-  "example/amazon-msk-auth.rkt" for an example.
+  @filepath{example/amazon-msk-auth.rkt} for an example.
 }
 
 @subsection{Errors}
@@ -204,9 +204,9 @@ Consumers are not thread-safe.
            (values 'records (vectorof record?))))]{
 
   Returns a @sync-evt that represents the result of consuming data
-  from the topics @racket[c] is subscribe to.  The synchronization
-  result is always a pair of values comprised of the result type and
-  its associated data.
+  from the topics @racket[c] is subscribed to.  The synchronization
+  result is a pair of values representing the result type and its
+  associated data.
 
   When a consumer leaves or joins the @tech{consumer group}, the event
   will synchronize to a @racket['rebalance] result.  In that case, the
@@ -226,7 +226,9 @@ Consumers are not thread-safe.
   The @racket[timeout-ms] argument controls how long the server-side
   may wait before returning a response.  If there are no records in
   between the time this function is called and when the timeout
-  passes, an empty vector or records will be returned.
+  passes, an empty vector or records will be returned.  The other end
+  may not necessarily respect the timeout value, and may return
+  immediately when there are no more records.
 }
 
 @defproc[(consumer-commit [c consumer?]) void?]{
@@ -303,8 +305,8 @@ detection, but the library does not validate these at the moment.
 @section{Producer}
 @defmodule[kafka/producer]
 
-@deftech{Producers} publish data on one or more topics.  Producers
-batch data internally by topic & partition, and they are thread-safe.
+@deftech{Producers} publish data to one or more topics.  They batch
+data internally by topic & partition, and they are thread-safe.
 
 @defproc[(producer? [v any/c]) boolean?]{
   Returns @racket[#t] when @racket[v] is a @tech{producer}.
@@ -327,7 +329,7 @@ batch data internally by topic & partition, and they are thread-safe.
   @racket[#:flush-interval] milliseconds, whenever the total size of
   all its batches exceeds @racket[#:max-batch-bytes], or whenever the
   total number of records contained in all of its batches exceeds
-  @racket[#:max-batch-size], whichever occurs first.
+  @racket[#:max-batch-size], whichever condition is true first.
 
   During a flush, calling @racket[produce] on a producer blocks until
   the flush completes.
@@ -335,8 +337,8 @@ batch data internally by topic & partition, and they are thread-safe.
 
 @defproc[(produce [p producer?]
                   [topic string?]
-                  [k (or/c #f bytes?)]
-                  [v (or/c #f bytes?)]
+                  [key (or/c #f bytes?)]
+                  [value (or/c #f bytes?)]
                   [#:partition partition exact-nonnegative-integer? 0]
                   [#:headers headers (hash/c string? (or/c #f bytes?)) (hash)]) evt?]{
 
