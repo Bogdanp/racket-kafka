@@ -92,8 +92,8 @@
   (proto:un-Headers
    `((HeadersLen_1 . ,(hash-count headers))
      (Header_1 . ,(for/list ([(k v) (in-hash headers)])
-                    `((Key_1   . ,k)
-                      (Value_1 . ,v)))))
+                    `((HeaderKey_1   . ,k)
+                      (HeaderValue_1 . ,v)))))
    buf-out)
 
   (define data-out (batch-data-out b))

@@ -21,7 +21,8 @@
                        #:max-batch-size exact-positive-integer?)
                       producer?)]
   [produce (->* (producer? string? (or/c #f bytes?) (or/c #f bytes?))
-                (#:partition exact-nonnegative-integer?)
+                (#:partition exact-nonnegative-integer?
+                 #:headers (hash/c string? (or/c #f bytes?)))
                 evt?)]
   [producer-flush (-> producer? void?)]
   [producer-stop (-> producer? void?)]))
@@ -59,8 +60,8 @@
 
            [else
             (match msg
-              [`(produce ,nack ,res-ch ,topic ,pid ,key ,value)
-               (add-state-message! st topic pid key value)
+              [`(produce ,nack ,res-ch ,topic ,pid ,key ,value ,headers)
+               (add-state-message! st topic pid key value headers)
                (define-values (fut fut-evt)
                  (make-Future topic pid))
                (add-state-req! st (ProduceReq nack res-ch fut-evt))
@@ -146,8 +147,10 @@
               (loop))])))))
   (producer ch batcher))
 
-(define (produce p topic key value #:partition [pid 0])
-  (sync (make-producer-evt p 'produce topic pid key value)))
+(define (produce p topic key value
+                 #:partition [pid 0]
+                 #:headers [headers (hash)])
+  (sync (make-producer-evt p 'produce topic pid key value headers)))
 
 (define (producer-flush p)
   (sync (make-producer-evt p 'flush)))
@@ -235,13 +238,16 @@
 (define (add-state-fut! st fut)
   (set-state-pending-futs! st (cons fut (state-pending-futs st))))
 
-(define (add-state-message! st topic pid key value)
+(define (add-state-message! st topic pid key value headers)
   (define t (hash-ref! (state-batches st) topic make-hasheqv))
   (define b (hash-ref! t pid (state-batch-proc st)))
-  (batch-append! b key value)
+  (batch-append! b key value #:headers headers)
   (define size
     (+ (if key (bytes-length key) 0)
-       (if value (bytes-length value) 0)))
+       (if value (bytes-length value) 0)
+       (for/sum ([(k v) (in-hash headers)])
+         (+ (string-length k)
+            (if v (bytes-length v) 0)))))
   (set-state-pending-bytes! st (+ (state-pending-bytes st) size))
   (set-state-pending-count! st (add1 (state-pending-count st))))
 

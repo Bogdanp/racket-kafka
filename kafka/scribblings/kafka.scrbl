@@ -337,7 +337,8 @@ batch data internally by topic & partition, and they are thread-safe.
                   [topic string?]
                   [k (or/c #f bytes?)]
                   [v (or/c #f bytes?)]
-                  [#:partition partition exact-nonnegative-integer? 0]) evt?]{
+                  [#:partition partition exact-nonnegative-integer? 0]
+                  [#:headers headers (hash/c string? (or/c #f bytes?)) (hash)]) evt?]{
 
   Returns a @sync-evt that is ready for synchronization after a new
   record has been written to the @racket[partition] belonging to
