@@ -3,6 +3,7 @@
 (require file/gunzip
          file/gzip
          file/lz4
+         file/snappy
          racket/port
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
@@ -277,6 +278,8 @@
        (define out (open-output-bytes))
        (lz4-decompress-through-ports data-in out #:validate-content? #t)
        (open-input-bytes (get-output-bytes out))]
+      [(snappy)
+       (open-input-bytes (unsnappy (read-bytes data-len data-in)))]
       [else
        (error 'read-batch "unsupported compression type: ~a" compression)]))
 
