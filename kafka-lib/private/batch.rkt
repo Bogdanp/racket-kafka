@@ -4,6 +4,7 @@
          file/gzip
          file/lz4
          file/snappy
+         libzstd
          racket/port
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
@@ -20,6 +21,9 @@
  batch-records
  write-batch
  read-batch)
+
+(define zstd-max-decompressed-len
+  (* 10 1024 1024))
 
 (struct batch
   (base-offset
@@ -280,6 +284,11 @@
        (open-input-bytes (get-output-bytes out))]
       [(snappy)
        (open-input-bytes (unsnappy (read-bytes data-len data-in)))]
+      [(zstd)
+       (open-input-bytes
+        (zstd-decompress
+         (read-bytes data-len data-in)
+         zstd-max-decompressed-len))]
       [else
        (error 'read-batch "unsupported compression type: ~a" compression)]))
 
