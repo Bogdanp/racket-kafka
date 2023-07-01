@@ -5,8 +5,8 @@
 
 (define c (make-consumer
            (make-client)
-           "zstd-group"
-           "zstd-data"))
+           "example-group"
+           "example-topic"))
 (with-handlers ([exn:break? void]
                 [exn:fail? (λ (e) ((error-display-handler) (exn-message e) e))])
   (let loop ()
