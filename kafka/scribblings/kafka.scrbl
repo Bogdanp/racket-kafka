@@ -9,7 +9,7 @@
                      racket/string
                      sasl))
 
-@title{Kafka}
+@title{Apache Kafka}
 @author[(author+email "Bogdan Popa" "bogdan@defn.io")]
 
 This package provides a client for Apache Kafka versions 0.11 and up.
