@@ -1,3 +1,3 @@
 #lang info
 
-(define scribblings '(("kafka.scrbl")))
+(define scribblings '(("kafka.scrbl" () ("Databases"))))
