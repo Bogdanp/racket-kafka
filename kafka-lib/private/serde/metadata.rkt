@@ -12,7 +12,9 @@
 (define-record PartitionMetadata
   ([error-code error-code/c]
    [id exact-nonnegative-integer?]
-   [leader-id exact-nonnegative-integer?]))
+   [leader-id exact-nonnegative-integer?]
+   [replica-node-ids (listof exact-nonnegative-integer?)]
+   [in-sync-replica-node-ids (listof exact-nonnegative-integer?)]))
 
 (define-record TopicMetadata
   ([error-code error-code/c]
@@ -63,6 +65,8 @@
         (PartitionMetadata
          (ref 'PartitionErrorCode_1 part)
          (ref 'PartitionID_1 part)
-         (ref 'Leader_1 part)))))
+         (ref 'Leader_1 part)
+         (ref 'Replica_1 part)
+         (ref 'ISR_1 part)))))
    (ref 'ControllerID_1 res)
    (opt 'ClusterID_1 res)))
