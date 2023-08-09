@@ -10,7 +10,8 @@
               [topic (in-value (TopicMetadata-name t))]
               #:when (member topic topics string=?)
               [p (in-list (TopicMetadata-partitions t))]
-              [pid (in-value (PartitionMetadata-id p))])
+              [pid (in-value (PartitionMetadata-id p))]
+              #:when (>= (PartitionMetadata-leader-id p) 0))
     (values (cons topic pid) (PartitionMetadata-leader-id p))))
 
 

@@ -199,7 +199,8 @@
 (define (get-topic-partitions-by-leader c topic&partitions)
   (define topic&partitions-to-node-ids
     (for*/hash ([topic (in-list (Metadata-topics (client-metadata c)))]
-                [part (in-list (TopicMetadata-partitions topic))])
+                [part (in-list (TopicMetadata-partitions topic))]
+                #:when (>= (PartitionMetadata-leader-id part) 0))
       (define topic&partition
         (cons (TopicMetadata-name topic)
               (PartitionMetadata-id part)))

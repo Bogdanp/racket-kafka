@@ -135,7 +135,8 @@
 (define (get-records* c topic-name metadata offsets max-bytes)
   (define partitions-by-node
     (for/fold ([nodes (hasheqv)])
-              ([p (in-list (TopicMetadata-partitions metadata))])
+              ([p (in-list (TopicMetadata-partitions metadata))]
+               #:when (>= (PartitionMetadata-leader-id p) 0))
       (hash-update
        nodes
        (PartitionMetadata-leader-id p)

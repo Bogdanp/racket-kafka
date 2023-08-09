@@ -12,7 +12,7 @@
 (define-record PartitionMetadata
   ([error-code error-code/c]
    [id exact-nonnegative-integer?]
-   [leader-id exact-nonnegative-integer?]
+   [leader-id exact-integer?]
    [replica-node-ids (listof exact-nonnegative-integer?)]
    [in-sync-replica-node-ids (listof exact-nonnegative-integer?)]))
 
