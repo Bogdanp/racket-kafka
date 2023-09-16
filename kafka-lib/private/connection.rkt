@@ -5,7 +5,8 @@
          racket/tcp
          "error.rkt"
          "help.rkt"
-         (prefix-in proto: "protocol.bnf"))
+         (prefix-in proto: "protocol.bnf")
+         "proxy.rkt")
 
 
 ;; connection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -23,11 +24,13 @@
 (define (connect [client-id "racket-kafka"]
                  [host "127.0.0.1"]
                  [port 9092]
+                 [proxy #f]
                  [ssl-ctx #f])
   (define-values (in out)
-    (if ssl-ctx
-        (ssl-connect host port ssl-ctx)
-        (tcp-connect host port)))
+    (cond
+      [proxy (proxy-connect proxy host port ssl-ctx)]
+      [ssl-ctx (ssl-connect host port ssl-ctx)]
+      [else (tcp-connect host port)]))
   (define ch (make-channel))
   (define mgr (thread/suspend-to-kill (make-manager client-id in out ch)))
   (define conn (connection ch mgr (hasheqv)))

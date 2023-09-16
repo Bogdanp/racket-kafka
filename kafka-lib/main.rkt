@@ -7,6 +7,7 @@
          sasl
          "private/client.rkt"
          "private/error.rkt"
+         "private/proxy.rkt"
          "private/serde.rkt")
 
 (provide
@@ -18,6 +19,9 @@
   [exn:fail:kafka:server-code (-> exn:fail:kafka:server? exact-integer?)]
   [error-code-symbol (-> exact-integer? symbol?)]
 
+  [proxy? (-> any/c boolean?)]
+  [make-http-proxy (-> string? (integer-in 1 65535) proxy?)]
+
   [client? (-> any/c boolean?)]
   [make-client (->* ()
                     (#:id non-empty-string?
@@ -27,7 +31,8 @@
                                            #f
                                            (list/c 'plain string?)
                                            (list/c symbol? sasl-ctx-proc/c))
-                     #:ssl-ctx (or/c #f ssl-client-context?))
+                     #:ssl-ctx (or/c #f ssl-client-context?)
+                     #:proxy (or/c #f proxy?))
                     client?)]
   [client-metadata (-> client? Metadata?)]
   [reload-metadata (-> client? Metadata?)]

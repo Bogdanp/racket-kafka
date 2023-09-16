@@ -27,12 +27,13 @@
          #:bootstrap-host [host "127.0.0.1"]
          #:bootstrap-port [port 9092]
          #:sasl-mechanism&ctx [sasl-mechanism&ctx #f]
-         #:ssl-ctx [ssl-ctx #f])
+         #:ssl-ctx [ssl-ctx #f]
+         #:proxy [proxy #f])
   (define bootstrap-conn #f)
   (define metadata
     (dynamic-wind
       (lambda ()
-        (set! bootstrap-conn (connect id host port ssl-ctx)))
+        (set! bootstrap-conn (connect id host port proxy ssl-ctx)))
       (lambda ()
         (when sasl-mechanism&ctx
           (apply authenticate host port bootstrap-conn sasl-mechanism&ctx))
@@ -43,7 +44,7 @@
     (make-channel))
   (define manager
     (thread/suspend-to-kill
-     (make-manager manager-ch id sasl-mechanism&ctx ssl-ctx metadata)))
+     (make-manager manager-ch id sasl-mechanism&ctx ssl-ctx proxy metadata)))
   (client manager-ch manager))
 
 (define (get-connection c [node-ids #f])
@@ -80,11 +81,11 @@
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define ((make-manager manager-ch client-id sasl-mechanism&ctx ssl-ctx metadata))
+(define ((make-manager manager-ch client-id sasl-mechanism&ctx ssl-ctx proxy metadata))
   (define (connect* broker)
     (define host (BrokerMetadata-host broker))
     (define port (BrokerMetadata-port broker))
-    (define conn (connect client-id host port ssl-ctx))
+    (define conn (connect client-id host port proxy ssl-ctx))
     (begin0 conn
       (when sasl-mechanism&ctx
         (apply authenticate host port conn sasl-mechanism&ctx))))

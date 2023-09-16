@@ -34,7 +34,8 @@ clients may not be shared between @tech{consumers}.
                       [#:sasl-mechanism&ctx sasl-ctx (or/c #f
                                                            (list/c 'plain string?)
                                                            (list/c symbol? sasl-ctx-proc/c)) #f]
-                      [#:ssl-ctx ssl-ctx (or/c #f ssl-client-context?) #f]) client?]{
+                      [#:ssl-ctx ssl-ctx (or/c #f ssl-client-context?) #f]
+                      [#:proxy proxy (or/c #f proxy?) #f]) client?]{
 
   Connects to a Kafka cluster via the server at @racket[host] and
   @racket[port] and returns a @tech{client}.
@@ -55,6 +56,20 @@ clients may not be shared between @tech{consumers}.
   The contract for SASL context factories.  The first argument is the
   host being authenticated against and the second is the port.  See
   @filepath{example/amazon-msk-auth.rkt} for an example.
+}
+
+@subsection{Proxies}
+
+@deftech{Proxies} act as intermediaries between clients and brokers.
+
+@defproc[(proxy? [v any/c]) boolean?]{
+  Returns @racket[#t] when @racket[v] is a @tech{proxy}.
+}
+
+@defproc[(make-http-proxy [host string?]
+                          [port (integer-in 1 65535)]) proxy?]{
+  Returns a proxy that connects to the given host and port using the
+  @tt{HTTP/1.1 CONNECT} protocol.
 }
 
 @subsection{Errors}
