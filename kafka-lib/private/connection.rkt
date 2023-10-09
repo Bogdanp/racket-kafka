@@ -89,7 +89,7 @@
         (loop
          (with-handlers ([exn:fail:network?
                           (lambda (e)
-                            (log-kafka-error "connection failed: ~a" (exn-message e))
+                            (log-kafka-warning "connection failed: ~a" (exn-message e))
                             (fail-pending-reqs
                              (set-state-disconnected s)
                              (client-error "disconnected")))]
