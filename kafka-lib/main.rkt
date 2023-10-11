@@ -41,6 +41,10 @@
   [get-metadata (-> client? string? ... Metadata?)]
   [describe-cluster (-> client? Cluster?)]
   [describe-configs (-> client? DescribeResource? DescribeResource? ... (listof DescribedResource?))]
+  [alter-configs (->* (client? AlterResource?)
+                      (#:validate? boolean?)
+                      #:rest (listof AlterResource?)
+                      (listof AlteredResource?))]
   [describe-producers (-> client? (hash/c string? (non-empty-listof exact-nonnegative-integer?)) DescribedProducers?)]
   [create-topics (-> client? CreateTopic? CreateTopic? ... CreatedTopics?)]
   [delete-topics (-> client? string? string? ... DeletedTopics?)]
@@ -96,6 +100,28 @@
          (sync (make-DescribeConfigs-evt conn resources)))
        (DescribedResources-resources res))))
   (apply append (map force described-resourcess)))
+
+(define (alter-configs c
+                       #:validate? [validate? #f]
+                       . resources)
+  (define resources-by-node-id
+    (for/fold ([resources-by-node-id (hasheqv)])
+              ([res (in-list resources)])
+      (define node-id
+        (and (eq? (AlterResource-type res) 'broker)
+             (string->number (AlterResource-name res))))
+      (hash-update resources-by-node-id node-id (λ (rs) (cons res rs)) null)))
+  (define altered-resources
+    (for/list ([(node-id resources) (in-hash resources-by-node-id)])
+      (delay/thread
+       (define conn
+         (if node-id
+             (get-node-connection c node-id)
+             (get-connection c)))
+       (define res
+         (sync (make-AlterConfigs-evt conn resources validate?)))
+       (AlteredResources-resources res))))
+  (apply append (map force altered-resources)))
 
 (define (describe-producers c topics)
   (when (zero? (hash-count topics))

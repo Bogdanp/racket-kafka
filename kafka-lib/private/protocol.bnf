@@ -389,6 +389,15 @@ IsDefault                 = i8;
 IsSensitive               = i8;
 
 
+## AlterConfigs (code 33)
+
+AlterConfigsRequestV0  = ArrayLen AlterConfigsResourceV0{ArrayLen_1} ValidateOnly;
+AlterConfigsResourceV0 = ResourceType ResourceName Configs;
+
+AlterConfigsResponseV0     = ThrottleTimeMs ArrayLen AlterConfigsResponseDataV0{ArrayLen_1};
+AlterConfigsResponseDataV0 = ErrorCode ErrorMessage ResourceType ResourceName;
+
+
 ## SaslAuthenticate (code 36)
 
 SaslAuthenticateRequestV1  = Bytes;

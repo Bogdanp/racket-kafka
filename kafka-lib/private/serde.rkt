@@ -7,6 +7,7 @@
 
 (reprovide
  "serde/authorized-operation.rkt"
+ "serde/alter-configs.rkt"
  "serde/commit.rkt"
  "serde/contract.rkt"
  "serde/create-topics.rkt"
