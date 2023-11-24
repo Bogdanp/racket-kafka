@@ -31,12 +31,12 @@
   [Reference-subject (-> Reference? string?)]
   [Reference-version (-> Reference? exact-integer?)]
   [Schema? (-> any/c boolean?)]
-  [make-Schema (->* (#:id exact-integer?
+  [make-Schema (->* (#:schema string?)
+                    (#:id exact-integer?
+                     #:type schema-type/c
                      #:subject string?
                      #:version exact-integer?
-                     #:schema string?
                      #:references (listof Reference?))
-                    (#:type schema-type/c)
                     Schema?)]
   [Schema-id (-> Schema? (or/c #f exact-integer?))]
   [Schema-subject (-> Schema? (or/c #f string?))]
