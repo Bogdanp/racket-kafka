@@ -96,11 +96,12 @@
   (hash-ref res 'id))
 
 (define (check-schema c subject schema)
-  (jsexpr->Schema
+  (hash-ref
    (post
     #:headers (hasheq 'content-type "application/json")
     #:data (jsexpr->bytes (Schema->jsexpr schema))
-    c (format "/subjects/~a" subject))))
+    c (format "/compatibility/subjects/~a/versions/latest" subject))
+   'is_compatible))
 
 
 ;; mode ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

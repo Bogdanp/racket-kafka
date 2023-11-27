@@ -64,7 +64,7 @@
                                (#:permanently? boolean?)
                                exact-integer?)]
   [register-schema (-> client? string? Schema? exact-integer?)]
-  [check-schema (-> client? string? Schema? Schema?)]
+  [check-schema (-> client? string? Schema? boolean?)]
 
   ;; mode
   [get-mode (->* (client?)
