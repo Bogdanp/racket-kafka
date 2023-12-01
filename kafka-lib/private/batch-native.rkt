@@ -27,7 +27,7 @@
             (with-handlers ([exn:fail?
                              (lambda (e)
                                (begin0 #f
-                                 (log-kafka-fault e "failed to read batch from ~s" in)))])
+                                 (log-kafka-fault e "failed to read batch")))])
               (b:read-batch batches-in)))
           (if batch
               (loop (cons batch batches))

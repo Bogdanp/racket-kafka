@@ -23,8 +23,8 @@
   (syntax-case stx ()
     [(_ err format-str format-arg ...)
      #'(let ([l kafka-logger])
-         (when (log-level? l 'warning 'kafka)
+         (when (log-level? l 'debug 'kafka)
            (log-message
-            l 'warning
+            l 'debug
             (format format-str format-arg ...)
             (make-fault err))))]))
