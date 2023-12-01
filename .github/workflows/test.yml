@@ -37,5 +37,5 @@ jobs:
       - run: git lfs pull
       - run: sudo raco pkg update --catalog https://pkgs.racket-lang.org sasl-lib
       - run: raco pkg install --auto amazon-msk-sasl-lib/ kafka-lib/ kafka-test/ kafka/
-      - run: env PLTSTDERR='error debug@kafka' raco test --drdr kafka-lib/ kafka-test/
-      - run: env PLTSTDERR='error debug@kafka' raco test amazon-msk-sasl-lib/ tests/
+      - run: env PLTSTDERR='error warning@kafka' raco test --drdr kafka-lib/ kafka-test/
+      - run: env PLTSTDERR='error warning@kafka' raco test amazon-msk-sasl-lib/ tests/
