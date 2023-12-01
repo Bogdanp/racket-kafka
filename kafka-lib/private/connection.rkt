@@ -5,6 +5,7 @@
          racket/tcp
          "error.rkt"
          "help.rkt"
+         "logger.rkt"
          (prefix-in proto: "protocol.bnf")
          "proxy.rkt")
 
@@ -62,13 +63,7 @@
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (provide
- log-kafka-debug
- log-kafka-info
- log-kafka-warning
- log-kafka-error
- log-kafka-fatal)
-
-(define-logger kafka)
+ (all-from-out "logger.rkt"))
 
 (define (read-port amount in)
   (define bs (read-bytes amount in))

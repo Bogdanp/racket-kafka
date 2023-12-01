@@ -4,7 +4,8 @@
          binfmt/runtime/res
          binfmt/runtime/unparser
          racket/port
-         (prefix-in b: "batch.rkt"))
+         (prefix-in b: "batch.rkt")
+         "logger.rkt")
 
 (provide
  (rename-out
@@ -23,7 +24,9 @@
           (ok (reverse batches))]
          [else
           (define batch
-            (with-handlers ([exn:fail? (λ (_) #f)])
+            (with-handlers ([exn:fail?
+                             (lambda (e)
+                               (log-kafka-fault e "failed to read batch from ~s" in))])
               (b:read-batch batches-in)))
           (if batch
               (loop (cons batch batches))
