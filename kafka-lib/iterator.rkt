@@ -137,25 +137,22 @@
      offsets]))
 
 (define (get-records* c topic-name metadata offsets max-bytes)
-  (define partitions-by-node
-    (for/fold ([nodes (hasheqv)])
-              ([p (in-list (TopicMetadata-partitions metadata))]
-               #:when (>= (PartitionMetadata-leader-id p) 0))
-      (hash-update
-       nodes
-       (PartitionMetadata-leader-id p)
-       (λ (parts)
-         (define pid (PartitionMetadata-id p))
-         (define part
-           (make-TopicPartition
-            #:id pid
-            #:offset (hash-ref offsets pid 0)))
-         (cons part parts))
-       null)))
+  ;; While it is possible to batch requests per node, it's a bad idea
+  ;; because one partition may starve out multiple smaller partitions
+  ;; on the same node. Instead, just make one request per (node,
+  ;; topic, partition) tuple.
   (define response-promises
-    (for/list ([(node-id partitions) (in-hash partitions-by-node)])
+    (for/list ([p (in-list (TopicMetadata-partitions metadata))]
+               #:when (>= (PartitionMetadata-leader-id p) 0))
+      (define node-id (PartitionMetadata-leader-id p))
+      (define partition-id (PartitionMetadata-id p))
+      (define topic-partition
+        (make-TopicPartition
+         #:id partition-id
+         #:offset (hash-ref offsets partition-id 0)))
+      (define topic-partitions
+        (hash topic-name (list topic-partition)))
       (delay/thread
-       (define topic-partitions (hash topic-name partitions))
        (sync (make-Fetch-evt (get-node-connection c node-id) topic-partitions 1000 0 max-bytes)))))
   (define responses
     (for/list ([promise (in-list response-promises)])
