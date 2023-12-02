@@ -7,6 +7,7 @@
          "private/client.rkt"
          "private/common.rkt"
          "private/error.rkt"
+         "private/logger.rkt"
          "private/record.rkt"
          "private/serde.rkt")
 
@@ -115,6 +116,9 @@
       (unless (zero? (PartitionOffset-error-code part))
         (raise-server-error (PartitionOffset-error-code part)))
       (values pid (PartitionOffset-offset part))))
+  (log-kafka-debug
+   "found offsets for topic ~s~n timestamp: ~s~n offsets: ~s"
+   topic-name timestamp offsets)
   (cond
     ;; When searching by timestamp, if the timestamp exceeds the
     ;; timestamp of the latest record, or if the partition has no
