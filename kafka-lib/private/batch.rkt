@@ -22,6 +22,8 @@
  write-batch
  read-batch)
 
+(define pump-buf-len
+  (* 64 1024))
 (define zstd-max-decompressed-len
   (* 10 1024 1024))
 
@@ -268,7 +270,26 @@
      #f ;; records
      ))
 
-  (define data-in (make-limited-input-port in data-len #f))
+  ;; Pump the data through a pipe so that we can issue writes to the
+  ;; other side while we parse the data.
+  (define-values (data-in data-out)
+    (make-pipe pump-buf-len))
+  (thread
+   (lambda ()
+     (define in* (make-limited-input-port in data-len #f))
+     (define buf (make-bytes pump-buf-len))
+     (with-handlers ([exn:fail? (λ (e)
+                                  ((error-display-handler)
+                                   (exn-message e)
+                                   e))])
+       (let loop ()
+         (define n-read
+           (read-bytes-avail! buf in*))
+         (unless (eof-object? n-read)
+           (write-bytes buf data-out 0 n-read)
+           (loop))))
+     (close-output-port data-out)))
+
   (define compression
     (batch-compression the-batch))
   (define records-in
