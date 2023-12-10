@@ -9,6 +9,7 @@
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
          "help.rkt"
+         "logger.rkt"
          "record.rkt")
 
 (provide
@@ -278,10 +279,9 @@
    (lambda ()
      (define in* (make-limited-input-port in data-len #f))
      (define buf (make-bytes pump-buf-len))
-     (with-handlers ([exn:fail? (λ (e)
-                                  ((error-display-handler)
-                                   (exn-message e)
-                                   e))])
+     (with-handlers ([exn:fail?
+                      (lambda (e)
+                        (log-kafka-fault e "batch pump failed"))])
        (let loop ()
          (define n-read
            (read-bytes-avail! buf in*))
