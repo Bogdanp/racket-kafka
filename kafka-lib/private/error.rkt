@@ -2,7 +2,7 @@
 
 (require (for-syntax racket/base
                      racket/string
-                     syntax/parse))
+                     syntax/parse/pre))
 
 (provide
  exn:fail:kafka?

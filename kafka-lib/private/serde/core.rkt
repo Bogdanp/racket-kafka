@@ -3,7 +3,7 @@
 (require (for-syntax racket/base
                      racket/list
                      racket/syntax
-                     syntax/parse)
+                     syntax/parse/pre)
          racket/contract
          racket/pretty
          "../connection.rkt"
