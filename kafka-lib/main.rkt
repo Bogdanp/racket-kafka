@@ -1,7 +1,6 @@
 #lang racket/base
 
-(require openssl
-         racket/contract/base
+(require racket/contract/base
          racket/lazy-require
          racket/promise
          racket/string
@@ -11,6 +10,7 @@
          "private/serde.rkt")
 
 (lazy-require
+ [openssl (ssl-client-context?)]
  [sasl (sasl-ctx?)])
 
 (provide

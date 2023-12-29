@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require openssl
+(require racket/lazy-require
          racket/match
          racket/tcp
          "error.rkt"
@@ -9,6 +9,8 @@
          (prefix-in proto: "protocol.bnf")
          "proxy.rkt")
 
+(lazy-require
+ [openssl (ssl-connect)])
 
 ;; connection ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
