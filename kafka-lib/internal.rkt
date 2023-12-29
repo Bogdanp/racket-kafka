@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require racket/contract
+(require racket/contract/base
          "iterator.rkt"
          "private/client.rkt"
          "private/serde.rkt")

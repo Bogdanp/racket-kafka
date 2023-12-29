@@ -1,14 +1,17 @@
 #lang racket/base
 
 (require openssl
-         racket/contract
+         racket/contract/base
+         racket/lazy-require
          racket/promise
          racket/string
-         sasl
          "private/client.rkt"
          "private/error.rkt"
          "private/proxy.rkt"
          "private/serde.rkt")
+
+(lazy-require
+ [sasl (sasl-ctx?)])
 
 (provide
  (all-from-out "private/serde.rkt")

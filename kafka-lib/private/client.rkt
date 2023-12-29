@@ -1,12 +1,17 @@
 #lang racket/base
 
-(require racket/match
+(require racket/lazy-require
+         racket/match
          racket/promise
          racket/random
-         sasl
          "connection.rkt"
          "error.rkt"
          "serde.rkt")
+
+(lazy-require
+ [sasl (sasl-state
+        sasl-next-message
+        sasl-receive-message)])
 
 ;; API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

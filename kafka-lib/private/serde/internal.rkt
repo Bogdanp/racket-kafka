@@ -1,6 +1,6 @@
 #lang racket/base
 
-(require racket/contract
+(require racket/contract/base
          racket/port
          (prefix-in consumer: "../protocol-consumer.bnf")
          (prefix-in internal: "../protocol-internal.bnf")

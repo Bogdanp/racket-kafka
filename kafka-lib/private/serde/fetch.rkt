@@ -2,7 +2,7 @@
 
 (require binfmt/runtime/parser
          binfmt/runtime/res
-         racket/contract
+         racket/contract/base
          "core.rkt")
 
 (define-record FetchResponsePartition

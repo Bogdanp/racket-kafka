@@ -5,7 +5,7 @@
                      kafka/producer
                      openssl
                      racket/base
-                     racket/contract
+                     racket/contract/base
                      racket/string
                      sasl))
 

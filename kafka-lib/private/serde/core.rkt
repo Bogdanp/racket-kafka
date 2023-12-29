@@ -4,7 +4,7 @@
                      racket/list
                      racket/syntax
                      syntax/parse/pre)
-         racket/contract
+         racket/contract/base
          racket/pretty
          "../connection.rkt"
          "../error.rkt"

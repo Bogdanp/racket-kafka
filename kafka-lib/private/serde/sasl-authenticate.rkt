@@ -1,7 +1,6 @@
 #lang racket/base
 
-(require racket/contract
-         "core.rkt")
+(require "core.rkt")
 
 (define-record SaslAuthenticateResponse
   ([data bytes?]

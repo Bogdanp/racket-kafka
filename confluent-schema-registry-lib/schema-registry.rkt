@@ -1,7 +1,7 @@
 #lang racket/base
 
 (require (only-in net/http-easy auth-procedure/c)
-         racket/contract
+         racket/contract/base
          "schema-registry/api.rkt"
          "schema-registry/client.rkt"
          "schema-registry/error.rkt")
