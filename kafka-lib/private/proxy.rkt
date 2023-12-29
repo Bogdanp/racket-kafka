@@ -1,8 +1,11 @@
 #lang racket/base
 
-(require net/http-client
-         racket/generic
+(require racket/generic
+         racket/lazy-require
          racket/match)
+
+(lazy-require
+ [net/http-client (http-conn-CONNECT-tunnel)])
 
 ;; generics ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
