@@ -13,15 +13,18 @@
  make-aws-msk-iam-ctx)
 
 ;; https://github.com/aws/aws-msk-iam-auth/blob/2a0e1ef5cb9c08f4526b5642be060b5bfb84d50b/src/main/java/software/amazon/msk/auth/iam/internals/IAMSaslClient.java#L85
-(define (make-aws-msk-iam-ctx #:region region
-                              #:access-key-id access-key-id
-                              #:secret-access-key secret-access-key
-                              #:server-name server-name)
+(define (make-aws-msk-iam-ctx
+         #:region region
+         #:access-key-id access-key-id
+         #:secret-access-key secret-access-key
+         #:session-token [session-token #f]
+         #:server-name server-name)
   (define payload
     (make-authentication-payload
      #:region region
      #:access-key-id access-key-id
      #:secret-access-key secret-access-key
+     #:session-token session-token
      #:server-name server-name))
   (make-sasl-ctx #f payload aws-msk-iam-receive))
 
@@ -52,6 +55,33 @@
       (check-regexp-match #rx"ACCESSEXAMPLE/......../us-east-1/kafka-cluster/aws4_request" (hash-ref data 'x-amz-credential))
       (check-regexp-match #rx"........T......Z" (hash-ref data 'x-amz-date))
       (check-ref 'x-amz-expires "900")
+      (check-false (hash-has-key? data 'x-amz-security-token))
+      (check-true (hash-has-key? data 'x-amz-signature))
+      (check-ref 'x-amz-signedheaders "host"))
+    (sasl-receive-message ctx #"ok")
+    (check-equal? (sasl-state ctx) 'done))
+
+  (test-case "happy path with session token"
+    (define ctx
+      (make-aws-msk-iam-ctx
+       #:region "us-east-1"
+       #:access-key-id "ACCESSEXAMPLE"
+       #:secret-access-key "supercalifragilisticexpialidocious"
+       #:session-token "sekret"
+       #:server-name "example.com"))
+    (check-equal? (sasl-state ctx) 'send/receive)
+    (let ([data (bytes->jsexpr (sasl-next-message ctx))])
+      (define-simple-check (check-ref k e)
+        (equal? (hash-ref data k) e))
+      (check-ref 'action "kafka-cluster:Connect")
+      (check-ref 'host "example.com")
+      (check-ref 'user-agent "racket-kafka")
+      (check-ref 'version "2020_10_22")
+      (check-ref 'x-amz-algorithm "AWS4-HMAC-SHA256")
+      (check-regexp-match #rx"ACCESSEXAMPLE/......../us-east-1/kafka-cluster/aws4_request" (hash-ref data 'x-amz-credential))
+      (check-regexp-match #rx"........T......Z" (hash-ref data 'x-amz-date))
+      (check-ref 'x-amz-expires "900")
+      (check-ref 'x-amz-security-token "sekret")
       (check-true (hash-has-key? data 'x-amz-signature))
       (check-ref 'x-amz-signedheaders "host"))
     (sasl-receive-message ctx #"ok")
@@ -75,15 +105,18 @@
 
 ;; https://github.com/aws/aws-msk-iam-auth/blob/2a0e1ef5cb9c08f4526b5642be060b5bfb84d50b/src/main/java/software/amazon/msk/auth/iam/internals/AWS4SignedPayloadGenerator.java
 ;; https://github.com/aws/aws-msk-iam-auth/blob/2a0e1ef5cb9c08f4526b5642be060b5bfb84d50b/src/main/java/software/amazon/msk/auth/iam/internals/AuthenticationRequestParams.java
-(define (make-authentication-payload #:region region
-                                     #:access-key-id access-key-id
-                                     #:secret-access-key secret-access-key
-                                     #:server-name server-name)
+(define (make-authentication-payload
+         #:region region
+         #:access-key-id access-key-id
+         #:secret-access-key secret-access-key
+         #:session-token [session-token #f]
+         #:server-name server-name)
   (define presigned-params
     (make-presigned-request
      #:region region
      #:access-key-id access-key-id
      #:secret-access-key secret-access-key
+     #:session-token session-token
      #:scope "kafka-cluster"
      #:expires-in (* 15 60)
      #:params (hasheq 'Action "kafka-cluster:Connect")
@@ -99,17 +132,19 @@
      (values (string->symbol (string-downcase (~a k))) v))))
 
 ;; https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
-(define (make-presigned-request #:region region
-                                #:access-key-id access-key-id
-                                #:secret-access-key secret-access-key
-                                #:date [the-date (seconds->date (current-seconds) #f)]
-                                #:expires-in [expires 3600]
-                                #:scope scope
-                                #:method [method "GET"]
-                                #:uri [uri "/"]
-                                #:params [params (hasheq)]
-                                #:headers [headers (hasheq)]
-                                #:payload-signature [payload-signature #"UNSIGNED-PAYLOAD"])
+(define (make-presigned-request
+         #:region region
+         #:access-key-id access-key-id
+         #:secret-access-key secret-access-key
+         #:session-token [session-token #f]
+         #:date [the-date (seconds->date (current-seconds) #f)]
+         #:expires-in [expires 3600]
+         #:scope scope
+         #:method [method "GET"]
+         #:uri [uri "/"]
+         #:params [params (hasheq)]
+         #:headers [headers (hasheq)]
+         #:payload-signature [payload-signature #"UNSIGNED-PAYLOAD"])
   (define credentials
     (string-join
      (list access-key-id (~date the-date) region scope "aws4_request") "/"))
@@ -119,6 +154,8 @@
         (hash-set 'X-Amz-Credential credentials)
         (hash-set 'X-Amz-Date (~datetime the-date))
         (hash-set 'X-Amz-Expires (~a expires))
+        (when~> session-token
+          (hash-set 'X-Amz-Security-Token session-token))
         (hash-set 'X-Amz-SignedHeaders (make-canonical-headers headers))))
   (define request
     (make-canonical-request method uri params* headers payload-signature))

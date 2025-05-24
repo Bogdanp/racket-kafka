@@ -9,6 +9,7 @@
    #:region "us-east-1"
    #:access-key-id "<ACCESS-KEY-ID>"
    #:secret-access-key "<SECRET-ACCESS-KEY>"
+   #:session-token (and #f "<SESSION-TOKEN>")
    #:server-name host))
 
 (define c
