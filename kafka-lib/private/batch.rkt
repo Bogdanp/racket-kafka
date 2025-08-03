@@ -1,16 +1,19 @@
 #lang racket/base
 
-(require file/gunzip
-         file/gzip
-         file/lz4
-         file/snappy
-         libzstd
+(require racket/lazy-require
          racket/port
          (prefix-in proto: "batch.bnf")
          "crc.rkt"
          "help.rkt"
          "logger.rkt"
          "record.rkt")
+
+(lazy-require
+ [file/gunzip (gunzip-through-ports)]
+ [file/gzip (gzip-through-ports)]
+ [file/lz4 (lz4-decompress-through-ports)]
+ [file/snappy (unsnappy)]
+ [libzstd (zstd-decompress)])
 
 (provide
  batch?
@@ -30,14 +33,14 @@
 
 (struct batch
   (base-offset
-   partition-leader-epoch
+   partition-leader-epoch ;; noqa
    attributes
-   last-offset-delta
+   last-offset-delta ;; noqa
    [first-timestamp #:mutable]
    [max-timestamp #:mutable]
-   producer-id
-   producer-epoch
-   base-sequence
+   producer-id ;; noqa
+   producer-epoch ;; noqa
+   base-sequence ;; noqa
    [size #:mutable]
    buf
    data
@@ -53,21 +56,20 @@
       [(gzip) (values #x01 (open-output-record-data/gzip data))]
       [else (raise-arguments-error 'make-batch "(or/c 'none 'gzip)" "compression" compression)]))
   (batch
-   0 ;; base-offset
-   0 ;; partition-leader-epoch
-   attributes
-   0 ;; last-offset-delta
-   #f ;; first-timestamp
-   0 ;; max-timestamp
-   0 ;; producer-id
-   0 ;; producer-epoch
-   0 ;; base-sequence
-   0 ;; size
-   buf
-   data
-   data-out
-   #f ;; records
-   ))
+   #;base-offset 0
+   #;partition-leader-epoch 0
+   #;attributes attributes
+   #;last-offset-delta 0
+   #;first-timestamp #f
+   #;max-timestamp 0
+   #;producer-id 0
+   #;producer-epoch 0
+   #;base-sequence 0
+   #;size 0
+   #;buf buf
+   #;data data
+   #;data-out data-out
+   #;records #f))
 
 (define (batch-compression b)
   (case (bitwise-and (batch-attributes b) #b111)
@@ -255,21 +257,20 @@
     (- (ref 'BatchLength_1 header) header-len))
   (define the-batch
     (batch
-     (ref 'BaseOffset_1 header)
-     (ref 'PartitionLeaderEpoch_1 header)
-     (ref 'BatchAttributes_1 header)
-     (ref 'LastOffsetDelta_1 header)
-     (ref 'FirstTimestamp_1 header)
-     (ref 'MaxTimestamp_1 header)
-     (ref 'ProducerID_1 header)
-     (ref 'ProducerEpoch_1 header)
-     (ref 'BaseSequence_1 header)
-     (ref 'RecordCount_1 header)
-     #f ;; buf
-     #f ;; data
-     #f ;; data-out
-     #f ;; records
-     ))
+     #;base-offset (ref 'BaseOffset_1 header)
+     #;partition-leader-epoch (ref 'PartitionLeaderEpoch_1 header)
+     #;attributes (ref 'BatchAttributes_1 header)
+     #;last-offset-delta (ref 'LastOffsetDelta_1 header)
+     #;first-timestamp (ref 'FirstTimestamp_1 header)
+     #;max-timestamp (ref 'MaxTimestamp_1 header)
+     #;producer-id (ref 'ProducerID_1 header)
+     #;producer-epoch (ref 'ProducerEpoch_1 header)
+     #;base-sequence (ref 'BaseSequence_1 header)
+     #;record-count (ref 'RecordCount_1 header)
+     #;buf #f
+     #;data #f
+     #;data-out #f
+     #;records #f))
 
   ;; Pump the data through a pipe so that we can issue writes to the
   ;; other side while we parse the data.
@@ -320,8 +321,8 @@
     (for/vector #:length size ([_ (in-range size)])
       (define rec (proto:Record records-in))
       (parse-record rec base-offset base-timestamp)))
-  (begin0 the-batch
-    (set-batch-records! the-batch records)))
+  (set-batch-records! the-batch records)
+  the-batch)
 
 (module+ test
   (test-case "read uncompressed"
@@ -392,8 +393,8 @@
    'record-data
    always-evt
    (λ (bs start end _flush? _enable-breaks?)
-     (begin0 (- end start)
-       (append-record-data! rd bs start end)))
+     (append-record-data! rd bs start end)
+     (end . - . start))
    void))
 
 (define (open-output-record-data/gzip rd)
