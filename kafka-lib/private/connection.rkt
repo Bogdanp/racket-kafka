@@ -3,6 +3,7 @@
 (require actor
          data/monocle
          racket/lazy-require
+         racket/match
          racket/tcp
          "error.rkt"
          "help.rkt"
@@ -69,62 +70,63 @@
   #:state (make-state)
   #:event
   (lambda (st)
+    (match-define (state connected? _ pending fulfilled) st)
     (apply
      choice-evt
      (handle-evt
-      (if (state-connected? st) in never-evt)
+      (if connected? in never-evt)
       (lambda (_)
         (with-handlers ([exn:fail:network?
                          (lambda (e)
                            (log-kafka-warning "connection failed: ~a" (exn-message e))
-                           (fail-pending-reqs
-                            (set-state-disconnected st)
-                            (client-error "disconnected")))]
-                        [exn:fail?
-                         (lambda (e)
-                           (begin0 st
-                             (log-kafka-error "failed to process response: ~a" (exn-message e))))])
+                           (state-fail-pending st (client-error "disconnected")))])
           (define size-in (read-port 4 in))
           (define size (proto:Size size-in))
           (define resp-in (read-port size in))
           (define resp-id (proto:CorrelationID resp-in))
           (cond
-            [(find-state-req st resp-id)
+            [(hash-ref pending resp-id #f)
              => (λ (req)
                   (define tags
-                    (and (KReq-flexible? req)
+                    (and (Request-flexible? req)
                          (proto:Tags resp-in)))
                   (define response
-                    ((KReq-parser req) resp-in))
+                    ((Request-parser req) resp-in))
                   (define updated-req
-                    (struct-copy KReq req [res (KRes response tags)]))
-                  (update-state-req st resp-id updated-req))]
+                    (struct-copy Request req [res (Response response tags)]))
+                  (struct-copy
+                   state st
+                   [pending (hash-remove pending resp-id)]
+                   [fulfilled (hash-set fulfilled resp-id updated-req)]))]
             [else
-             (begin0 st
-               (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id))]))))
+             (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id)
+             st]))))
      (append
-      (for/list ([(id r) (in-hash (state-reqs st))]
-                 #:unless (pending? (KReq-res r)))
+      (for/list ([(id r) (in-hash pending)])
+        (handle-evt
+         (Request-nack r)
+         (lambda (_)
+           (&state-pending st (hash-remove pending id)))))
+      (for/list ([(id r) (in-hash fulfilled)])
         (handle-evt
          (channel-put-evt
-          (KReq-ch r)
-          (KReq-res r))
+          (Request-ch r)
+          (Request-res r))
          (lambda (_)
-           (remove-state-req st id))))
-      (for/list ([(id r) (in-hash (state-reqs st))])
+           (&state-fulfilled st (hash-remove fulfilled id)))))
+      (for/list ([(id r) (in-hash (state-fulfilled st))])
         (handle-evt
-         (KReq-nack r)
+         (Request-nack r)
          (lambda (_)
-           (remove-state-req st id)))))))
+           (&state-fulfilled st (hash-remove fulfilled id))))))))
 
-  (define (-request st nack ch immed-response flexible? k v tags request-data parser)
-    (unless (state-connected? st)
+  (define (-request st nack ch immed flexible? k v tags request-data parser)
+    (match-define (state connected? seq pending fulfilled) st)
+    (unless connected?
       (raise (client-error "disconnected")))
     (define res
-      (if immed-response
-          (KRes immed-response (hasheqv))
-          pending))
-    (define req (KReq nack ch res flexible? parser))
+      (and immed (Response immed (hasheqv))))
+    (define req (Request nack ch res flexible? parser))
     (define header-data
       (with-output-bytes
         ((if flexible?
@@ -132,7 +134,7 @@
              proto:un-RequestHeaderV1)
          `((APIKey_1 . ,k)
            (APIVersion_1 . ,v)
-           (CorrelationID_1 . ,(state-next-id st))
+           (CorrelationID_1 . ,seq)
            (ClientID_1 . ,id)
            (Tags_1 . ,tags)))))
     (define size
@@ -142,10 +144,16 @@
     (write-bytes header-data out)
     (write-bytes request-data out)
     (flush-output out)
-    (values (add-state-req st req) (void)))
+    (values
+     (struct-copy
+      state st
+      [seq (add1 seq)]
+      [pending (if immed pending (hash-set pending seq req))]
+      [fulfilled (if immed (hash-set fulfilled seq req) fulfilled)])
+     (void)))
 
   (define (-requests-in-flight st)
-    (values st (state-req-count st)))
+    (values st (hash-count (state-pending st))))
 
   (define (-connected? st)
     (values st (state-connected? st)))
@@ -163,70 +171,45 @@
                           #:parser parser
                           #:data [data #""]
                           #:flexible? [flexible? #f]
-                          #:immed-response [immed-response #f])
+                          #:immed-response [immed #f])
   (define ch (make-channel))
   (define mgr (connection-mgr conn))
   (handle-evt
    (nack-guard-evt
     (lambda (nack)
       (replace-evt
-       (-request-evt mgr nack ch immed-response flexible? k v tags data parser)
+       (-request-evt mgr nack ch immed flexible? k v tags data parser)
        (lambda (_) ch))))
    (lambda (res-or-exn)
      (when (exn:fail? res-or-exn)
        (raise res-or-exn))
-     (KRes-data res-or-exn))))
+     (Response-data res-or-exn))))
 
 
 ;; manager state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct KReq (nack ch res flexible? parser))
-(struct KRes (data tags))
+(struct Request (nack ch res flexible? parser))
+(struct Response (data tags))
 
-(struct state (connected? seq reqs))
+(struct state (connected? seq pending fulfilled))
 (define-struct-lenses state)
 
 (define (make-state)
-  (state #t 0 (hasheqv)))
+  (state
+   #;connected? #t
+   #;seq 0
+   #;pending (hasheqv)
+   #;fulfilled (hasheqv)))
 
-(define (state-next-id s)
-  (state-seq s))
-
-(define (state-req-count s)
-  (hash-count (state-reqs s)))
-
-(define (add-state-req s req)
-  (define id (state-next-id s))
-  (define reqs (hash-set (state-reqs s) id req))
-  (struct-copy state s
-               [seq (add1 id)]
-               [reqs reqs]))
-
-(define (find-state-req s id)
-  (hash-ref (state-reqs s) id #f))
-
-(define (update-state-req s id req)
-  (struct-copy state s [reqs (hash-set (state-reqs s) id req)]))
-
-(define (remove-state-req s id)
-  (struct-copy state s [reqs (hash-remove (state-reqs s) id)]))
-
-(define (set-state-disconnected s)
-  (struct-copy state s [connected? #f]))
-
-(define (fail-pending-reqs s err)
-  (struct-copy state s [reqs (for/hasheqv ([(id req) (in-hash (state-reqs s))])
-                               (define updated-req
-                                 (if (and (KReq? req) (pending? (KReq-res req)))
-                                     (struct-copy KReq req [res err])
-                                     req))
-                               (values id updated-req))]))
-
-(define pending
-  (gensym 'pending))
-
-(define (pending? v)
-  (eq? v pending))
+(define (state-fail-pending st err)
+  (define fulfilled
+    (for/fold ([fulfilled (state-fulfilled st)])
+              ([(id req) (in-hash (state-pending st))])
+      (hash-set fulfilled id (struct-copy Request req [res err]))))
+  (struct-copy
+   state st
+   [pending (hasheqv)]
+   [fulfilled fulfilled]))
 
 
 ;; version ranges ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
