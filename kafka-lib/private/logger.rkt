@@ -16,9 +16,6 @@
 
 (struct fault (original-error))
 
-(define (make-fault err)
-  (fault err))
-
 (define-syntax (log-kafka-fault stx)
   (syntax-case stx ()
     [(_ err format-str format-arg ...)
@@ -27,4 +24,4 @@
            (log-message
             l 'debug
             (format format-str format-arg ...)
-            (make-fault err))))]))
+            (fault err))))]))
