@@ -1,6 +1,8 @@
 #lang racket/base
 
-(require racket/lazy-require
+(require actor
+         data/monocle
+         racket/lazy-require
          racket/match
          racket/promise
          racket/random
@@ -25,7 +27,7 @@
  reload-metadata
  disconnect-all)
 
-(struct client (manager-ch manager))
+(struct client (manager))
 
 (define (make-client
          #:id [id "racket-kafka"]
@@ -45,22 +47,27 @@
         (sync (make-Metadata-evt bootstrap-conn null)))
       (lambda ()
         (disconnect bootstrap-conn))))
-  (define manager-ch
-    (make-channel))
-  (define manager
-    (thread/suspend-to-kill
-     (make-manager manager-ch id sasl-mechanism&ctx ssl-ctx proxy metadata)))
-  (client manager-ch manager))
+  (define (connect* broker)
+    (define host (BrokerMetadata-host broker)) ;; noqa
+    (define port (BrokerMetadata-port broker)) ;; noqa
+    (define conn (connect id host port proxy ssl-ctx))
+    (begin0 conn
+      (when sasl-mechanism&ctx
+        (apply authenticate host port conn sasl-mechanism&ctx))))
+  (define (enliven broker conn)
+    (if (connected? conn) conn (connect* broker)))
+  (client (manager connect* enliven metadata)))
 
 (define (get-connection c [node-ids #f])
-  (force (send c get-best-connection node-ids)))
+  (force (-get-best-connection (client-manager c) node-ids)))
 
 (define (get-controller-connection c)
   (define metadata
     (client-metadata c))
-  (get-node-connection c (λ (b)
-                           (= (BrokerMetadata-node-id b)
-                              (Metadata-controller-id metadata)))))
+  (define (controller-node? b)
+    (= (BrokerMetadata-node-id b)
+       (Metadata-controller-id metadata)))
+  (get-node-connection c controller-node?))
 
 (define (get-node-connection c node-id)
   (define metadata (client-metadata c))
@@ -72,195 +79,156 @@
      (Metadata-brokers metadata)))
   (unless maybe-broker
     (raise-argument-error 'get-node-connection "node-id/c" node-id))
-  (force (send c get-connection maybe-broker)))
+  (force (-get-connection (client-manager c) maybe-broker)))
 
 (define (client-metadata c)
-  (send c get-metadata))
+  (-get-metadata (client-manager c)))
 
 (define (reload-metadata c)
-  (send c reload-metadata (get-controller-connection c)))
+  (define manager (client-manager c))
+  (define ctl-conn (get-controller-connection c))
+  (force (-reload-metadata manager ctl-conn)))
 
 (define (disconnect-all c)
-  (send c disconnect-all))
+  (force (-disconnect-all (client-manager c))))
 
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define ((make-manager manager-ch client-id sasl-mechanism&ctx ssl-ctx proxy metadata))
-  (define (connect* broker)
-    (define host (BrokerMetadata-host broker))
-    (define port (BrokerMetadata-port broker))
-    (define conn (connect client-id host port proxy ssl-ctx))
-    (begin0 conn
-      (when sasl-mechanism&ctx
-        (apply authenticate host port conn sasl-mechanism&ctx))))
-  (define (enliven broker conn)
-    (if (connected? conn) conn (connect* broker)))
-  (let loop ([st (make-state metadata)])
-    (loop
-     (apply
-      sync
-      (handle-evt
-       manager-ch
-       (lambda (msg)
-         (match msg
-           [`(get-best-connection ,res-ch ,nack ,node-ids)
-            (let connect-loop ([st st])
-              (with-handlers ([exn:fail? (λ (e) (state-add-req st (req res-ch nack e)))])
-                (match-define (state meta conns _) st)
-                (define brokers (Metadata-brokers meta))
-                (define connected-node-ids (hash-keys conns))
-                (define unconnected-brokers
-                  (for*/list ([b (in-list brokers)]
-                              [node-id (in-value (BrokerMetadata-node-id b))]
-                              #:unless (memv node-id connected-node-ids)
-                              #:when (if node-ids (memv node-id node-ids) #t))
-                    b))
-                (define filtered-conns
-                  (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
-                                #:when (if node-ids (memv node-id node-ids) #t))
-                    (values node-id conn-promise)))
-                (cond
-                  [(null? unconnected-brokers)
-                   (define dead-conns
-                     (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)]
-                                   #:unless (with-handlers ([exn:fail? (λ (_) #f)])
-                                              (connected? (force conn-promise))))
-                       (values node-id #t)))
-                   (cond
-                     [(hash-empty? filtered-conns)
-                      (define err (client-error "invalid node subset: ~e" node-ids))
-                      (state-add-req st (req res-ch nack err))]
-                     [(hash-empty? dead-conns)
-                      (define filtered-live-conns
-                        (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)])
-                          (values node-id (force conn-promise))))
-                      (define-values (node-id conn)
-                        (find-best-connection filtered-live-conns))
-                      (define broker
-                        (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
-                      (define conn*
-                        (delay/thread (enliven broker conn)))
-                      (log-kafka-debug "client: picked node ~e from ~e" node-id (hash-keys filtered-live-conns))
-                      (state-add-req
-                       (state-set-conn st node-id conn)
-                       (req res-ch nack conn*))]
-                     [else
-                      (log-kafka-debug "client: found stale connections; retrying")
-                      (define all-live-conns
-                        (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
-                                      #:unless (hash-has-key? dead-conns node-id))
-                          (values node-id conn-promise)))
-                      (connect-loop (state-set-conns st all-live-conns))])]
-                  [else
-                   (define broker (random-ref unconnected-brokers))
-                   (define node-id (BrokerMetadata-node-id broker))
-                   (define conn (delay/thread (connect* broker)))
-                   (log-kafka-debug "client: picked unconnected node ~e" node-id)
-                   (state-add-req
-                    (state-set-conn st node-id conn)
-                    (req res-ch nack conn))])))]
+(define-actor (manager connect enliven meta)
+  #:state (make-state meta)
+  #:event (lambda (st)
+            (handle-evt
+             (apply choice-evt (state-evts st))
+             (lambda (update-proc)
+               (update-proc st))))
 
-           [`(get-connection ,res-ch ,nack ,broker)
-            (define node-id
-              (BrokerMetadata-node-id broker))
-            (define maybe-conn-promise
-              (hash-ref (state-conns st) node-id #f))
+  (define (-get-best-connection st node-ids)
+    (let connect-loop ([st st])
+      (match-define (state meta conns _) st)
+      (define brokers (Metadata-brokers meta))
+      (define connected-node-ids (hash-keys conns))
+      (define unconnected-brokers
+        (for*/list ([b (in-list brokers)]
+                    [node-id (in-value (BrokerMetadata-node-id b))]
+                    #:unless (memv node-id connected-node-ids)
+                    #:when (if node-ids (memv node-id node-ids) #t))
+          b))
+      (define filtered-conns
+        (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
+                      #:when (if node-ids (memv node-id node-ids) #t))
+          (values node-id conn-promise)))
+      (cond
+        [(null? unconnected-brokers)
+         (define dead-conns
+           (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)]
+                         #:unless (with-handlers ([exn:fail? (λ (_) #f)])
+                                    (connected? (force conn-promise))))
+             (values node-id #t)))
+         (cond
+           [(hash-empty? filtered-conns)
+            (raise (client-error "invalid node subset: ~e" node-ids))]
+           [(hash-empty? dead-conns)
+            (define filtered-live-conns
+              (for/hasheqv ([(node-id conn-promise) (in-hash filtered-conns)])
+                (values node-id (force conn-promise))))
+            (define-values (node-id conn)
+              (find-best-connection filtered-live-conns))
+            (define broker
+              (findf (λ (b) (= (BrokerMetadata-node-id b) node-id)) brokers))
             (define conn-promise
-              (delay/thread
-               (cond
-                 [maybe-conn-promise
-                  (define conn
-                    (with-handlers ([exn:fail? (λ (_) (connect* broker))])
-                      (force maybe-conn-promise)))
-                  (enliven broker conn)]
-                 [else
-                  (connect* broker)])))
-            (state-add-req
-             (state-set-conn st node-id conn-promise)
-             (req res-ch nack conn-promise))]
+              (delay/thread (enliven broker conn)))
+            (log-kafka-debug "client: picked node ~e from ~e" node-id (hash-keys filtered-live-conns))
+            (values (state-set-conn st node-id conn-promise) conn-promise)]
+           [else
+            (log-kafka-debug "client: found stale connections; retrying")
+            (define all-live-conns
+              (for/hasheqv ([(node-id conn-promise) (in-hash conns)]
+                            #:unless (hash-has-key? dead-conns node-id))
+                (values node-id conn-promise)))
+            (connect-loop (&state-conns st all-live-conns))])]
+        [else
+         (define broker (random-ref unconnected-brokers))
+         (define node-id (BrokerMetadata-node-id broker))
+         (define conn-promise (delay/thread (connect broker)))
+         (log-kafka-debug "client: picked unconnected node ~e" node-id)
+         (values (state-set-conn st node-id conn-promise) conn-promise)])))
 
-           [`(get-metadata ,res-ch ,nack)
-            (state-add-req st (req res-ch nack (state-meta st)))]
+  (define (-get-connection st broker)
+    (define node-id
+      (BrokerMetadata-node-id broker))
+    (define conn-promise
+      (delay/thread
+       (cond
+         [(hash-ref (state-conns st) node-id #f)
+          => (lambda (promise)
+               (define conn
+                 (with-handlers ([exn:fail? (λ (_) (connect broker))])
+                   (force promise)))
+               (enliven broker conn))]
+         [else
+          (connect broker)])))
+    (values (state-set-conn st node-id conn-promise) conn-promise))
 
-           [`(reload-metadata ,res-ch ,nack ,ctl-conn)
-            (with-handlers ([exn:fail? (λ (e) (state-add-req st (req res-ch nack e)))])
-              (define meta (sync (make-Metadata-evt ctl-conn null)))
-              (state-add-req
-               (state-set-meta st meta)
-               (req res-ch nack meta)))]
+  (define (-get-metadata st)
+    (values st (state-meta st)))
 
-           [`(disconnect-all ,res-ch ,nack)
-            (for ([conn-promise (in-hash-values (state-conns st))])
-              (with-handlers ([exn:fail? void])
-                (disconnect (force conn-promise))))
-            (state-add-req
-             (state-clear-conns st)
-             (req res-ch nack (void)))]
+  (define (-reload-metadata st ctl-conn)
+    (define metadata-promise
+      (delay/thread
+       (sync (make-Metadata-evt ctl-conn null))))
+    (define metadata-evt
+      (handle-evt
+       metadata-promise
+       (lambda (_)
+         (with-handlers ([exn:fail? (λ (_) values)])
+           (define metadata (force metadata-promise))
+           (lambda (st) ;; noqa
+             (&state-meta st metadata))))))
+    (values
+     (state-add-evt st metadata-evt)
+     metadata-promise))
 
-           [_
-            (begin0 st
-              (log-kafka-error "client: unexpected message ~e" msg))])))
-      (append
-       (for/list ([r (in-list (state-reqs st))])
-         (match-define (req res-ch _ res) r)
-         (handle-evt
-          (channel-put-evt res-ch res)
-          (λ (_) (state-remove-req st r))))
-       (for/list ([r (in-list (state-reqs st))])
-         (match-define (req _ nack _) r)
-         (handle-evt nack (λ (_) (state-remove-req st r)))))))))
-
-(define-syntax-rule (send c id . args)
-  (sync (make-manager-evt c 'id . args)))
-
-(define (make-manager-evt c id . args)
-  (define res-ch
-    (make-channel))
-  (handle-evt
-   (nack-guard-evt
-    (lambda (nack)
-      (thread-resume
-       (client-manager c)
-       (current-thread))
-      (begin0 res-ch
-        (channel-put
-         (client-manager-ch c)
-         `(,id ,res-ch ,nack ,@args)))))
-   (lambda (res-or-exn)
-     (begin0 res-or-exn
-       (when (exn:fail? res-or-exn)
-         (raise res-or-exn))))))
+  (define (-disconnect-all st)
+    (define promise
+      (delay/thread
+       (for ([conn-promise (in-hash-values (state-conns st))])
+         (with-handlers ([exn:fail? void])
+           (disconnect (force conn-promise))))))
+    (values (&state-conns st (hasheqv)) promise)))
 
 
 ;; manager state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct req (res-ch nack res))
-
-;; conns: node id -> promise of Connection
-(struct state (meta conns reqs)
-  #:transparent)
+;; conns: node id -> promiseof Connection
+;; evts: listof evtof (state -> state)
+(struct state (meta conns evts))
+(define-struct-lenses state)
 
 (define (make-state meta)
   (state meta (hasheqv) null))
 
-(define (state-set-meta st meta)
-  (struct-copy state st [meta meta]))
-
-(define (state-add-req st req)
-  (struct-copy state st [reqs (cons req (state-reqs st))]))
-
-(define (state-remove-req st req)
-  (struct-copy state st [reqs (remq req (state-reqs st))]))
-
-(define (state-set-conns st conns)
-  (struct-copy state st [conns conns]))
+(define (state-add-evt st evt)
+  ;; Adds an event to the event list that removes itself from the list
+  ;; upon synchronization.
+  (define update-evt
+    (handle-evt
+     evt (lambda (update-proc)
+           (lambda (st) ;; noqa
+             (lens-update
+              &state-evts (update-proc st)
+              (lambda (evts)
+                (remq update-evt evts)))))))
+  (lens-update
+   &state-evts st
+   (λ (evts)
+     (cons update-evt evts))))
 
 (define (state-set-conn st node-id conn)
-  (struct-copy state st [conns (hash-set (state-conns st) node-id conn)]))
-
-(define (state-clear-conns st)
-  (struct-copy state st [conns (hasheqv)]))
+  (lens-update
+   &state-conns st
+   (λ (conns)
+     (hash-set conns node-id conn))))
 
 
 ;; help ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
