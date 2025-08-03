@@ -1,7 +1,8 @@
 #lang racket/base
 
-(require racket/lazy-require
-         racket/match
+(require actor
+         data/monocle
+         racket/lazy-require
          racket/tcp
          "error.rkt"
          "help.rkt"
@@ -22,9 +23,9 @@
  make-request-evt
  get-requests-in-flight)
 
-(struct connection (ch mgr [versions #:mutable]))
+(struct connection (mgr [versions #:mutable]))
 
-(define (connect [client-id "racket-kafka"]
+(define (connect [id "racket-kafka"]
                  [host "127.0.0.1"]
                  [port 9092]
                  [proxy #f]
@@ -34,32 +35,20 @@
       [proxy (proxy-connect proxy host port ssl-ctx)]
       [ssl-ctx (ssl-connect host port ssl-ctx)]
       [else (tcp-connect host port)]))
-  (define ch (make-channel))
-  (define mgr (thread/suspend-to-kill (make-manager client-id in out ch)))
-  (define conn (connection ch mgr (hasheqv)))
-  (begin0 conn
-    (set-connection-versions! conn (get-api-versions conn))))
+  (define mgr (manager id in out))
+  (define conn (connection mgr (hasheqv)))
+  (define versions (get-api-versions conn))
+  (set-connection-versions! conn versions)
+  conn)
 
 (define (connected? conn)
-  (sync
-   (make-message-evt conn `(connected?))
-   (handle-evt
-    (thread-dead-evt (connection-mgr conn))
-    (lambda (_) #f))))
+  (-connected? (connection-mgr conn)))
 
 (define (disconnect conn)
-  (define ch (connection-ch conn))
-  (define mgr (connection-mgr conn))
-  (thread-resume mgr (current-thread))
-  (void
-   (sync
-    (thread-dead-evt mgr)
-    (handle-evt
-     (channel-put-evt ch `(disconnect))
-     (λ (_) mgr)))))
+  (-disconnect (connection-mgr conn)))
 
 (define (get-requests-in-flight conn)
-  (sync (make-message-evt conn '(requests-in-flight))))
+  (-requests-in-flight (connection-mgr conn)))
 
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -76,148 +65,126 @@
       (current-continuation-marks))))
   (open-input-bytes bs))
 
-(define ((make-manager client-id in out ch))
-  (let loop ([s (make-state)])
+(define-actor (manager id in out)
+  #:state (make-state)
+  #:event
+  (lambda (st)
     (apply
-     sync
+     choice-evt
      (handle-evt
-      (if (state-connected? s) in never-evt)
+      (if (state-connected? st) in never-evt)
       (lambda (_)
-        (loop
-         (with-handlers ([exn:fail:network?
-                          (lambda (e)
-                            (log-kafka-warning "connection failed: ~a" (exn-message e))
-                            (fail-pending-reqs
-                             (set-state-disconnected s)
-                             (client-error "disconnected")))]
-                         [exn:fail?
-                          (lambda (e)
-                            (begin0 s
-                              (log-kafka-error "failed to process response: ~a" (exn-message e))))])
-           (define size-in (read-port 4 in))
-           (define size (proto:Size size-in))
-           (define resp-in (read-port size in))
-           (define resp-id (proto:CorrelationID resp-in))
-           (cond
-             [(find-state-req s resp-id)
-              => (λ (req)
-                   (define tags
-                     (and (KReq-flexible? req)
-                          (proto:Tags resp-in)))
-                   (define response
-                     ((KReq-parser req) resp-in))
-                   (define updated-req
-                     (struct-copy KReq req [res #:parent Req (KRes response tags)]))
-                   (update-state-req s resp-id updated-req))]
-             [else
-              (begin0 s
-                (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id))])))))
-     (handle-evt
-      ch
-      (lambda (msg)
-        (match msg
-          [`(disconnect)
-           (close-input-port in)
-           (close-output-port out)
-           (log-kafka-debug "client ~a disconnected" client-id)]
-
-          [`(connected? ,nack ,ch)
-           (define req (Req nack ch (state-connected? s)))
-           (loop (add-state-req s req))]
-
-          [`(requests-in-flight ,nack ,ch)
-           (define req (Req nack ch (state-req-count s)))
-           (loop (add-state-req s req))]
-
-          [`(request ,immed-response ,flexible? ,k ,v ,tags ,request-data ,parser ,nack ,ch)
-           #:when (state-connected? s)
-           (loop
-            (with-handlers ([exn:fail?
-                             (lambda (err)
-                               (define req (Req nack ch err))
-                               (add-state-req s req))])
-              (define res
-                (if immed-response
-                    (KRes immed-response (hasheqv))
-                    pending))
-              (define req (KReq nack ch res flexible? parser))
-              (define header-data
-                (with-output-bytes
-                  ((if flexible?
-                       proto:un-RequestHeaderV2
-                       proto:un-RequestHeaderV1)
-                   `((APIKey_1 . ,k)
-                     (APIVersion_1 . ,v)
-                     (CorrelationID_1 . ,(state-next-id s))
-                     (ClientID_1 . ,client-id)
-                     (Tags_1 . ,tags)))))
-              (define size
-                (+ (bytes-length header-data)
-                   (bytes-length request-data)))
-              (proto:un-Size size out)
-              (write-bytes header-data out)
-              (write-bytes request-data out)
-              (flush-output out)
-              (add-state-req s req)))]
-
-          [`(request ,_ ,_ ,_ ,_ ,_ ,_ ,_ ,nack ,ch)
-           (define err (client-error "disconnected"))
-           (define req (Req nack ch err))
-           (loop (add-state-req s req))]
-
-          [msg
-           (log-kafka-error "invalid message: ~e" msg)
-           (loop s)])))
+        (with-handlers ([exn:fail:network?
+                         (lambda (e)
+                           (log-kafka-warning "connection failed: ~a" (exn-message e))
+                           (fail-pending-reqs
+                            (set-state-disconnected st)
+                            (client-error "disconnected")))]
+                        [exn:fail?
+                         (lambda (e)
+                           (begin0 st
+                             (log-kafka-error "failed to process response: ~a" (exn-message e))))])
+          (define size-in (read-port 4 in))
+          (define size (proto:Size size-in))
+          (define resp-in (read-port size in))
+          (define resp-id (proto:CorrelationID resp-in))
+          (cond
+            [(find-state-req st resp-id)
+             => (λ (req)
+                  (define tags
+                    (and (KReq-flexible? req)
+                         (proto:Tags resp-in)))
+                  (define response
+                    ((KReq-parser req) resp-in))
+                  (define updated-req
+                    (struct-copy KReq req [res (KRes response tags)]))
+                  (update-state-req st resp-id updated-req))]
+            [else
+             (begin0 st
+               (log-kafka-warning "dropped response w/o associated request~n  id: ~a" resp-id))]))))
      (append
-      (for/list ([(id r) (in-hash (state-reqs s))]
-                 #:unless (pending? (Req-res r)))
+      (for/list ([(id r) (in-hash (state-reqs st))]
+                 #:unless (pending? (KReq-res r)))
         (handle-evt
-         (channel-put-evt (Req-ch r) (Req-res r))
+         (channel-put-evt
+          (KReq-ch r)
+          (KReq-res r))
          (lambda (_)
-           (loop (remove-state-req s id)))))
-      (for/list ([(id r) (in-hash (state-reqs s))])
+           (remove-state-req st id))))
+      (for/list ([(id r) (in-hash (state-reqs st))])
         (handle-evt
-         (Req-nack r)
+         (KReq-nack r)
          (lambda (_)
-           (loop (remove-state-req s id)))))))))
+           (remove-state-req st id)))))))
+
+  (define (-request st nack ch immed-response flexible? k v tags request-data parser)
+    (unless (state-connected? st)
+      (raise (client-error "disconnected")))
+    (define res
+      (if immed-response
+          (KRes immed-response (hasheqv))
+          pending))
+    (define req (KReq nack ch res flexible? parser))
+    (define header-data
+      (with-output-bytes
+        ((if flexible?
+             proto:un-RequestHeaderV2
+             proto:un-RequestHeaderV1)
+         `((APIKey_1 . ,k)
+           (APIVersion_1 . ,v)
+           (CorrelationID_1 . ,(state-next-id st))
+           (ClientID_1 . ,id)
+           (Tags_1 . ,tags)))))
+    (define size
+      (+ (bytes-length header-data)
+         (bytes-length request-data)))
+    (proto:un-Size size out)
+    (write-bytes header-data out)
+    (write-bytes request-data out)
+    (flush-output out)
+    (values (add-state-req st req) (void)))
+
+  (define (-requests-in-flight st)
+    (values st (state-req-count st)))
+
+  (define (-connected? st)
+    (values st (state-connected? st)))
+
+  (define (-disconnect st)
+    (close-input-port in)
+    (close-output-port out)
+    (log-kafka-debug "client ~a disconnected" id)
+    (values (&state-connected? st #f) (void))))
 
 (define (make-request-evt conn
-                          #:key key
+                          #:key k
                           #:version v
                           #:tags [tags (hasheqv)]
                           #:parser parser
                           #:data [data #""]
                           #:flexible? [flexible? #f]
                           #:immed-response [immed-response #f])
-  (define msg `(request ,immed-response ,flexible? ,key ,v ,tags ,data ,parser))
-  (handle-evt (make-message-evt conn msg) KRes-data))
-
-(define (make-message-evt conn msg)
   (define ch (make-channel))
   (define mgr (connection-mgr conn))
   (handle-evt
    (nack-guard-evt
     (lambda (nack)
-      (thread-resume mgr (current-thread))
-      (begin0 ch
-        (sync
-         (thread-dead-evt mgr)
-         (channel-put-evt
-          (connection-ch conn)
-          (append msg `(,nack ,ch)))))))
+      (replace-evt
+       (-request-evt mgr nack ch immed-response flexible? k v tags data parser)
+       (lambda (_) ch))))
    (lambda (res-or-exn)
-     (begin0 res-or-exn
-       (when (exn:fail? res-or-exn)
-         (raise res-or-exn))))))
+     (when (exn:fail? res-or-exn)
+       (raise res-or-exn))
+     (KRes-data res-or-exn))))
 
 
 ;; manager state ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(struct Req (nack ch res))
-(struct KReq Req (flexible? parser))
+(struct KReq (nack ch res flexible? parser))
 (struct KRes (data tags))
 
 (struct state (connected? seq reqs))
+(define-struct-lenses state)
 
 (define (make-state)
   (state #t 0 (hasheqv)))
@@ -250,8 +217,8 @@
 (define (fail-pending-reqs s err)
   (struct-copy state s [reqs (for/hasheqv ([(id req) (in-hash (state-reqs s))])
                                (define updated-req
-                                 (if (and (KReq? req) (pending? (Req-res req)))
-                                     (struct-copy KReq req [res #:parent Req err])
+                                 (if (and (KReq? req) (pending? (KReq-res req)))
+                                     (struct-copy KReq req [res err])
                                      req))
                                (values id updated-req))]))
 
