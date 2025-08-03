@@ -17,31 +17,37 @@
          "private/serde.rkt")
 
 (provide
+ consumer?
  (contract-out
-  [struct record ([partition-id (or/c #f exact-integer?)]
-                  [offset exact-integer?]
-                  [timestamp exact-integer?]
-                  [key (or/c #f bytes?)]
-                  [value (or/c #f bytes?)]
-                  [headers (hash/c string? bytes?)])]
-
-  [consumer? (-> any/c boolean?)]
-  [make-consumer (->* (client? string?)
-                      (#:assignors (listof assign:assignor?)
-                       #:reset-strategy (or/c 'earliest 'latest)
-                       #:session-timeout-ms exact-nonnegative-integer?)
-                      #:rest (non-empty-listof string?)
-                      consumer?)]
-  [consume-evt (->* (consumer?) (exact-nonnegative-integer?) evt?)]
-  [consumer-commit (-> consumer? void?)]
-  [consumer-stop (-> consumer? void?)]))
+  [struct record ;; noqa
+    ([partition-id (or/c #f exact-integer?)]
+     [offset exact-integer?]
+     [timestamp exact-integer?]
+     [key (or/c #f bytes?)]
+     [value (or/c #f bytes?)]
+     [headers (hash/c string? bytes?)])]
+  [make-consumer
+   (->* [client? string?]
+        [#:assignors (listof assign:assignor?)
+         #:reset-strategy (or/c 'earliest 'latest)
+         #:session-timeout-ms exact-nonnegative-integer?]
+        #:rest (non-empty-listof string?)
+        consumer?)]
+  [consume-evt
+   (->* [consumer?]
+        [exact-nonnegative-integer?]
+        evt?)]
+  [consumer-commit
+   (-> consumer? void?)]
+  [consumer-stop
+   (-> consumer? void?)]))
 
 (struct consumer
   (client
    group-id
    [generation-id #:mutable]
    [member-id #:mutable]
-   [topics #:mutable]
+   topics
    [topic-partitions #:mutable]
    heartbeat-in-ch
    heartbeat-err-ch
@@ -59,21 +65,21 @@
   (define heartbeat-err-ch (make-channel))
   (define the-consumer
     (consumer
-     client
-     group-id
-     0 ;; generation-id
-     #f ;; member-id
-     topics
-     #f ;; topic-partitions
-     heartbeat-in-ch
-     heartbeat-err-ch
-     #f ;; heartbeat-thd
-     assignors
-     offset-reset-strategy
-     session-timeout-ms))
-  (begin0 the-consumer
-    (join-group! the-consumer)
-    (start-heartbeat-thd! the-consumer)))
+     #;client client
+     #;group-id group-id
+     #;generation-id 0
+     #;member-id #f
+     #;topics topics
+     #;topic-partitions #f
+     #;heartbeat-in-ch heartbeat-in-ch
+     #;heartbeat-err-ch heartbeat-err-ch
+     #;heartbeat-thd #f
+     #;assignors assignors
+     #;offset-reset-strategy offset-reset-strategy
+     #;session-timeout-ms session-timeout-ms))
+  (join-group! the-consumer)
+  (start-heartbeat-thd! the-consumer)
+  the-consumer)
 
 (define (consume-evt c [timeout 1000])
   (define deadline
@@ -133,8 +139,8 @@
                            [b (in-list (FetchResponsePartition-batches p))]
                            [r (in-vector (batch-records b))]
                            #:when (>= (record-offset r) offset))
-               (begin0 r
-                 (set-record-partition-id! r pid))))
+               (set-record-partition-id! r pid)
+               r))
            (define offsets
              (for*/fold ([offsets (hash)])
                         ([(topic partitions) (in-hash (FetchResponse-topics res))]
@@ -429,9 +435,9 @@
         (raise-server-error err-code))
       (for/list ([p (in-list (TopicMetadata-partitions t))])
         (define pid (PartitionMetadata-id p))
-        (define err-code (PartitionMetadata-error-code p))
-        (unless (zero? err-code)
-          (raise-server-error err-code))
+        (define p-err-code (PartitionMetadata-error-code p))
+        (unless (zero? p-err-code)
+          (raise-server-error p-err-code))
         (assign:topic-partition topic pid))))
    (lambda (a b)
      (match-define (assign:topic-partition topic-a pid-a) a)
