@@ -51,12 +51,10 @@
     (define host (BrokerMetadata-host broker)) ;; noqa
     (define port (BrokerMetadata-port broker)) ;; noqa
     (define conn (connect id host port proxy ssl-ctx))
-    (begin0 conn
-      (when sasl-mechanism&ctx
-        (apply authenticate host port conn sasl-mechanism&ctx))))
-  (define (enliven broker conn)
-    (if (connected? conn) conn (connect* broker)))
-  (client (manager connect* enliven metadata)))
+    (when sasl-mechanism&ctx
+      (apply authenticate host port conn sasl-mechanism&ctx))
+    conn)
+  (client (manager connect* metadata)))
 
 (define (get-connection c [node-ids #f])
   (force (-get-best-connection (client-manager c) node-ids)))
@@ -95,13 +93,16 @@
 
 ;; manager ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define-actor (manager connect enliven meta)
+(define-actor (manager connect meta)
   #:state (make-state meta)
   #:event (lambda (st)
             (handle-evt
              (apply choice-evt (state-evts st))
              (lambda (update-proc)
                (update-proc st))))
+
+  (define/private (enliven broker conn)
+    (if (connected? conn) conn (connect broker)))
 
   (define (-get-best-connection st node-ids)
     (let connect-loop ([st st])
